@@ -1,0 +1,16 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "flight",
+  "main": "dist/flight/worker.mjs",
+  "compatibility_date": "2026-06-16",
+  "compatibility_flags": ["nodejs_compat"],
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["FlueRegistry", "FlueTinyfatAgent"]
+    }
+  ],
+  "vars": {
+    "CRAWDAD_API_BASE": "https://crawdad.tinyfat.com"
+  }
+}
