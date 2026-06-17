@@ -56,6 +56,12 @@ export async function fetchConsoleLedgerLines(env: Env, instanceId: string): Pro
   return Array.isArray(data?.lines) ? data.lines.filter((line): line is string => typeof line === "string") : [];
 }
 
+export async function streamConsoleLedgerLines(env: Env, instanceId: string): Promise<Response | null> {
+  const stub = consoleLedgerStub(env, instanceId);
+  if (!stub) return null;
+  return await stub.fetch("https://flight-console-ledger.local/entries/stream");
+}
+
 function consoleLedgerStub(env: Env, instanceId: string): DurableObjectStub | null {
   const namespace = env.FLIGHT_CONSOLE_LEDGER;
   if (!namespace) return null;
@@ -68,6 +74,8 @@ function stableIdPart(value: string): string {
 
 export class FlightConsoleLedger {
   private readonly initialized: Promise<void>;
+  private readonly subscribers = new Set<ReadableStreamDefaultController<Uint8Array>>();
+  private readonly encoder = new TextEncoder();
 
   constructor(private readonly ctx: DurableObjectState, _env: Env) {
     this.initialized = ctx.blockConcurrencyWhile(async () => {
@@ -97,6 +105,10 @@ export class FlightConsoleLedger {
       return Response.json({ lines: rows.map((row) => row.line) });
     }
 
+    if (url.pathname === "/entries/stream" && request.method === "GET") {
+      return this.streamEntries();
+    }
+
     if (url.pathname === "/entries" && request.method === "POST") {
       const body = await request.json().catch(() => null) as { line?: unknown } | null;
       if (typeof body?.line !== "string") return new Response("Missing line.", { status: 400 });
@@ -113,10 +125,43 @@ export class FlightConsoleLedger {
         body.line,
         Date.now(),
       );
+      this.broadcastLine(body.line);
       return Response.json({ ok: true });
     }
 
     return new Response("Not found.", { status: 404 });
+  }
+
+  private streamEntries(): Response {
+    let streamController: ReadableStreamDefaultController<Uint8Array> | null = null;
+    const body = new ReadableStream<Uint8Array>({
+      start: (controller) => {
+        streamController = controller;
+        this.subscribers.add(controller);
+        controller.enqueue(this.encoder.encode(": connected\n\n"));
+      },
+      cancel: () => {
+        if (streamController) this.subscribers.delete(streamController);
+      },
+    });
+    return new Response(body, {
+      headers: {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+      },
+    });
+  }
+
+  private broadcastLine(line: string): void {
+    const frame = this.encoder.encode(`data: ${line}\n\n`);
+    for (const controller of Array.from(this.subscribers)) {
+      try {
+        controller.enqueue(frame);
+      } catch {
+        this.subscribers.delete(controller);
+      }
+    }
   }
 }
 

@@ -8,7 +8,7 @@ import { appendConsoleUserEntry } from "./ledger";
 
 type AppContext = Context<{ Bindings: Env }>;
 
-const UI_SCRIPT = "index-CwoJ3r9l.js";
+const UI_SCRIPT = "index-DS48d93i.js";
 const UI_STYLES = "index-DvKbFLU-.css";
 const DEFAULT_CRAW_DAD_ASSET_BASE = "https://crawdad-cf.alexgarcia042.workers.dev";
 

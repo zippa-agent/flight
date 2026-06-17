@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { flueEventToConsoleEvents, flueEventToContextLine, mergeConsoleHistoryLines } from "../src/console/stream";
+import {
+  createAssistantFallbackRecorder,
+  flueEventToConsoleEvents,
+  flueEventToContextLine,
+  mergeConsoleHistoryLines,
+  streamConsoleHistory,
+} from "../src/console/stream";
 
 test("translates Flue text deltas to console web chat deltas", () => {
   assert.deepEqual(flueEventToConsoleEvents({
@@ -138,4 +144,73 @@ test("merges console history lines by durable id and timestamp", () => {
   });
 
   assert.deepEqual(mergeConsoleHistoryLines([assistant, user, assistant, "not json"]), [user, assistant]);
+});
+
+test("streams console history from the durable console ledger when available", async () => {
+  const ledgerResponse = new Response(": connected\n\n", {
+    headers: { "Content-Type": "text/event-stream" },
+  });
+  const calls: string[] = [];
+  const c = {
+    env: {
+      FLIGHT_CONSOLE_LEDGER: {
+        idFromName(name: string) {
+          calls.push(`id:${name}`);
+          return { name };
+        },
+        get(id: { name: string }) {
+          calls.push(`get:${id.name}`);
+          return {
+            fetch(request: Request | string) {
+              calls.push(typeof request === "string" ? request : request.url);
+              return Promise.resolve(ledgerResponse);
+            },
+          };
+        },
+      },
+    },
+  };
+
+  const response = await streamConsoleHistory(c as any, "agent--floopy--web");
+
+  assert.equal(response, ledgerResponse);
+  assert.deepEqual(calls, [
+    "id:agent--floopy--web",
+    "get:agent--floopy--web",
+    "https://flight-console-ledger.local/entries/stream",
+  ]);
+});
+
+test("creates a fallback assistant ledger line from deltas when no message_end arrives", () => {
+  const recorder = createAssistantFallbackRecorder("submission-1");
+  recorder.capture({ type: "thinking_delta", timestamp: "2026-06-17T02:00:00.000Z", delta: "Thinking" });
+  recorder.capture({ type: "thinking_delta", delta: " briefly." });
+  recorder.capture({ type: "text_delta", delta: "ignored" });
+  recorder.capture({ type: "text_delta", text: "hello" });
+  recorder.capture({ type: "text_delta", text: " world" });
+
+  const line = recorder.toContextLine();
+
+  assert.ok(line);
+  assert.equal(recorder.toContextLine(), null);
+  assert.deepEqual(JSON.parse(line), {
+    id: "flight-console-submission-1-assistant",
+    type: "message",
+    timestamp: "2026-06-17T02:00:00.000Z",
+    message: {
+      role: "assistant",
+      content: [
+        { type: "thinking", thinking: "Thinking briefly." },
+        { type: "text", text: "hello world" },
+      ],
+    },
+  });
+});
+
+test("does not create a fallback assistant line after an authoritative snapshot", () => {
+  const recorder = createAssistantFallbackRecorder("submission-2");
+  recorder.capture({ type: "text_delta", text: "partial" });
+  recorder.markAuthoritative();
+
+  assert.equal(recorder.toContextLine(), null);
 });

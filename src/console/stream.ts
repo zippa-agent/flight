@@ -1,7 +1,7 @@
 import type { Context } from "hono";
 import { flue } from "@flue/runtime/routing";
 import type { Env } from "../env";
-import { appendConsoleLedgerLine, fetchConsoleLedgerLines } from "./ledger";
+import { appendConsoleLedgerLine, fetchConsoleLedgerLines, streamConsoleLedgerLines } from "./ledger";
 
 type AppContext = Context<{ Bindings: Env }>;
 
@@ -86,7 +86,18 @@ export function streamConsoleMessage(c: AppContext, admission: AgentAdmission): 
       };
 
       void (async () => {
-        const ledgerWrites: Promise<void>[] = [];
+        const fallbackRecorder = createAssistantFallbackRecorder(admission.submissionId);
+        const assistantLedgerLines: string[] = [];
+        const flushAssistantLedgerLines = async () => {
+          const fallbackLine = fallbackRecorder.toContextLine();
+          if (fallbackLine) assistantLedgerLines.push(fallbackLine);
+          const lines = assistantLedgerLines.splice(0);
+          await Promise.allSettled(lines.map((line) => (
+            appendConsoleLedgerLine(c.env, admission.instanceId, line).catch((error) => {
+              console.warn("Flight console assistant ledger write failed:", error);
+            })
+          )));
+        };
         try {
           send({ type: "status", status: "connecting" });
           const url = flueUrl(admission.streamUrl);
@@ -99,14 +110,14 @@ export function streamConsoleMessage(c: AppContext, admission: AgentAdmission): 
           send({ type: "status", status: "streaming" });
           let completed = false;
           let sentComplete = false;
-          await readFlueSse(response, (events) => {
+          await readFlueSse(response, async (events) => {
             for (const event of events) {
               if (event?.submissionId && event.submissionId !== admission.submissionId) continue;
+              fallbackRecorder.capture(event);
               const contextLine = flueEventToContextLine(event);
               if (contextLine && contextLineRole(contextLine) === "assistant") {
-                ledgerWrites.push(appendConsoleLedgerLine(c.env, admission.instanceId, contextLine).catch((error) => {
-                  console.warn("Flight console assistant ledger write failed:", error);
-                }));
+                fallbackRecorder.markAuthoritative();
+                assistantLedgerLines.push(contextLine);
               }
               for (const consoleEvent of flueEventToConsoleEvents(event)) {
                 send(consoleEvent);
@@ -115,18 +126,22 @@ export function streamConsoleMessage(c: AppContext, admission: AgentAdmission): 
                 completed = true;
                 if (!sentComplete) {
                   sentComplete = true;
+                  await flushAssistantLedgerLines();
                   send({ type: "run_complete" });
                 }
               }
             }
             return completed;
           });
-          if (!sentComplete) send({ type: "run_complete" });
+          if (!sentComplete) {
+            await flushAssistantLedgerLines();
+            send({ type: "run_complete" });
+          }
         } catch (error) {
           send({ type: "error", message: error instanceof Error ? error.message : String(error) });
         } finally {
           keepActiveConsoleSubmission(admission.submissionId);
-          await Promise.allSettled(ledgerWrites);
+          await flushAssistantLedgerLines();
           try {
             controller.close();
           } catch {
@@ -185,6 +200,53 @@ export function mergeConsoleHistoryLines(lines: string[]): string[] {
     .map((entry) => entry.line);
 }
 
+interface AssistantFallbackRecorder {
+  capture(event: any): void;
+  markAuthoritative(): void;
+  toContextLine(): string | null;
+}
+
+export function createAssistantFallbackRecorder(submissionId: string): AssistantFallbackRecorder {
+  let timestamp = new Date().toISOString();
+  let thinking = "";
+  let text = "";
+  let hasAuthoritativeSnapshot = false;
+  let emittedFallback = false;
+
+  return {
+    capture(event: any) {
+      if (!event || typeof event !== "object") return;
+      if (typeof event.timestamp === "string" && event.timestamp) timestamp = event.timestamp;
+      if (event.type === "thinking_delta" && typeof event.delta === "string") {
+        thinking += event.delta;
+      }
+      if (event.type === "thinking_end" && typeof event.content === "string") {
+        thinking = event.content;
+      }
+      if (event.type === "text_delta" && typeof event.text === "string") {
+        text += event.text;
+      }
+    },
+    markAuthoritative() {
+      hasAuthoritativeSnapshot = true;
+    },
+    toContextLine() {
+      if (hasAuthoritativeSnapshot || emittedFallback) return null;
+      const content: Array<Record<string, unknown>> = [];
+      if (thinking.trim()) content.push({ type: "thinking", thinking });
+      if (text.trim()) content.push({ type: "text", text });
+      if (content.length === 0) return null;
+      emittedFallback = true;
+      return JSON.stringify({
+        id: `flight-console-${stableIdPart(submissionId)}-assistant`,
+        type: "message",
+        timestamp,
+        message: { role: "assistant", content },
+      });
+    },
+  };
+}
+
 function contextLineRole(line: string): string | null {
   return contextLineEnvelope(line)?.role || null;
 }
@@ -210,7 +272,10 @@ function contextLineEnvelope(line: string): { id: string; timestamp: string; rol
   }
 }
 
-export function streamConsoleHistory(c: AppContext, instanceId: string): Response {
+export async function streamConsoleHistory(c: AppContext, instanceId: string): Promise<Response> {
+  const ledgerStream = await streamConsoleLedgerLines(c.env, instanceId);
+  if (ledgerStream) return ledgerStream;
+
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
       const encoder = new TextEncoder();
@@ -274,7 +339,7 @@ function safeExecutionContext(c: AppContext) {
 
 async function readFlueSse(
   response: Response,
-  onEvents: (events: any[]) => boolean,
+  onEvents: (events: any[]) => boolean | Promise<boolean>,
 ): Promise<void> {
   const reader = response.body!.getReader();
   const decoder = new TextDecoder();
@@ -290,7 +355,7 @@ async function readFlueSse(
       const frame = parseSseFrame(rawFrame);
       if (!frame || frame.event !== "data") continue;
       const events = JSON.parse(frame.data) as any[];
-      if (onEvents(Array.isArray(events) ? events : [])) {
+      if (await onEvents(Array.isArray(events) ? events : [])) {
         await reader.cancel().catch(() => undefined);
         return;
       }
