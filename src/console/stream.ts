@@ -1,10 +1,13 @@
 import type { Context } from "hono";
 import { flue } from "@flue/runtime/routing";
 import type { Env } from "../env";
+import { appendConsoleLedgerLine, fetchConsoleLedgerLines } from "./ledger";
 
 type AppContext = Context<{ Bindings: Env }>;
 
 const flueApp = flue();
+const ACTIVE_CONSOLE_SUBMISSION_TTL_MS = 30_000;
+const activeConsoleSubmissions = new Map<string, number>();
 
 export interface ConsoleMessageInput {
   agentId: string;
@@ -16,6 +19,7 @@ interface AgentAdmission {
   streamUrl: string;
   offset: string;
   submissionId: string;
+  instanceId: string;
 }
 
 interface SseFrame {
@@ -45,11 +49,14 @@ export async function postAgentMessage(c: AppContext, input: ConsoleMessageInput
   if (!data?.streamUrl || !data.offset || !data.submissionId) {
     throw new Error("Flight prompt admission returned an invalid response.");
   }
-  return {
+  const admission = {
     streamUrl: data.streamUrl,
     offset: data.offset,
     submissionId: data.submissionId,
+    instanceId: input.instanceId,
   };
+  markActiveConsoleSubmission(admission.submissionId);
+  return admission;
 }
 
 export async function promptAgentForResult(c: AppContext, input: ConsoleMessageInput): Promise<string> {
@@ -79,6 +86,7 @@ export function streamConsoleMessage(c: AppContext, admission: AgentAdmission): 
       };
 
       void (async () => {
+        const ledgerWrites: Promise<void>[] = [];
         try {
           send({ type: "status", status: "connecting" });
           const url = flueUrl(admission.streamUrl);
@@ -94,6 +102,12 @@ export function streamConsoleMessage(c: AppContext, admission: AgentAdmission): 
           await readFlueSse(response, (events) => {
             for (const event of events) {
               if (event?.submissionId && event.submissionId !== admission.submissionId) continue;
+              const contextLine = flueEventToContextLine(event);
+              if (contextLine && contextLineRole(contextLine) === "assistant") {
+                ledgerWrites.push(appendConsoleLedgerLine(c.env, admission.instanceId, contextLine).catch((error) => {
+                  console.warn("Flight console assistant ledger write failed:", error);
+                }));
+              }
               for (const consoleEvent of flueEventToConsoleEvents(event)) {
                 send(consoleEvent);
               }
@@ -111,6 +125,8 @@ export function streamConsoleMessage(c: AppContext, admission: AgentAdmission): 
         } catch (error) {
           send({ type: "error", message: error instanceof Error ? error.message : String(error) });
         } finally {
+          keepActiveConsoleSubmission(admission.submissionId);
+          await Promise.allSettled(ledgerWrites);
           try {
             controller.close();
           } catch {
@@ -139,10 +155,15 @@ export async function fetchConsoleHistory(c: AppContext, instanceId: string, lim
     return { lines: [], total: 0, offset: 0 };
   }
   const events = await response.json().catch(() => []) as unknown[];
-  const lines = events.flatMap((event) => {
+  const flueLines = events.flatMap((event) => {
     const line = flueEventToContextLine(event);
-    return line ? [line] : [];
+    return line && contextLineRole(line) !== "user" ? [line] : [];
   });
+  const ledgerLines = await fetchConsoleLedgerLines(c.env, instanceId).catch((error) => {
+    console.warn("Flight console ledger read failed:", error);
+    return [];
+  });
+  const lines = mergeConsoleHistoryLines([...ledgerLines, ...flueLines]);
   const end = before === undefined ? lines.length : Math.max(0, Math.min(before, lines.length));
   const start = Math.max(0, end - limit);
   return {
@@ -150,6 +171,43 @@ export async function fetchConsoleHistory(c: AppContext, instanceId: string, lim
     total: lines.length,
     offset: start,
   };
+}
+
+export function mergeConsoleHistoryLines(lines: string[]): string[] {
+  const byId = new Map<string, { line: string; timestamp: string }>();
+  for (const line of lines) {
+    const parsed = contextLineEnvelope(line);
+    if (!parsed) continue;
+    byId.set(parsed.id, { line, timestamp: parsed.timestamp });
+  }
+  return Array.from(byId.values())
+    .sort((a, b) => a.timestamp.localeCompare(b.timestamp) || a.line.localeCompare(b.line))
+    .map((entry) => entry.line);
+}
+
+function contextLineRole(line: string): string | null {
+  return contextLineEnvelope(line)?.role || null;
+}
+
+function contextLineEnvelope(line: string): { id: string; timestamp: string; role?: string } | null {
+  try {
+    const parsed = JSON.parse(line) as {
+      id?: unknown;
+      timestamp?: unknown;
+      type?: unknown;
+      message?: { role?: unknown };
+    };
+    if (parsed.type !== "message") return null;
+    if (typeof parsed.id !== "string" || !parsed.id) return null;
+    if (typeof parsed.timestamp !== "string" || !parsed.timestamp) return null;
+    return {
+      id: parsed.id,
+      timestamp: parsed.timestamp,
+      role: typeof parsed.message?.role === "string" ? parsed.message.role : undefined,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function streamConsoleHistory(c: AppContext, instanceId: string): Response {
@@ -173,6 +231,7 @@ export function streamConsoleHistory(c: AppContext, instanceId: string): Respons
           }
           await readFlueSse(response, (events) => {
             for (const event of events) {
+              if (isActiveConsoleSubmissionEvent(event)) continue;
               const line = flueEventToContextLine(event);
               if (line) sendLine(line);
             }
@@ -307,19 +366,60 @@ function isTerminalEvent(event: any): boolean {
   return event?.type === "idle" || event?.type === "agent_end" || event?.type === "submission_settled";
 }
 
-function flueEventToContextLine(event: any): string | null {
+export function flueEventToContextLine(event: any): string | null {
   if (!event || event.type !== "message_end" || !event.message) return null;
   const role = event.message.role;
   if (role !== "user" && role !== "assistant") return null;
-  const content = role === "assistant"
-    ? normalizeContentBlocks(event.message.content)
-    : [{ type: "text", text: textFromContent(event.message.content) }];
+  const content = normalizeMessageContentForContext(event.message.content);
+  if (content.length === 0) return null;
   return JSON.stringify({
-    id: `flight-${role}-${event.eventIndex ?? Date.now()}`,
+    id: flightEventContextId(event, role),
     type: "message",
     timestamp: event.timestamp || new Date().toISOString(),
     message: { role, content },
   });
+}
+
+function markActiveConsoleSubmission(submissionId: string): void {
+  pruneActiveConsoleSubmissions();
+  activeConsoleSubmissions.set(submissionId, Date.now() + ACTIVE_CONSOLE_SUBMISSION_TTL_MS);
+}
+
+function keepActiveConsoleSubmission(submissionId: string): void {
+  activeConsoleSubmissions.set(submissionId, Date.now() + ACTIVE_CONSOLE_SUBMISSION_TTL_MS);
+}
+
+function isActiveConsoleSubmissionEvent(event: any): boolean {
+  pruneActiveConsoleSubmissions();
+  return typeof event?.submissionId === "string" && activeConsoleSubmissions.has(event.submissionId);
+}
+
+function pruneActiveConsoleSubmissions(): void {
+  const now = Date.now();
+  for (const [submissionId, expiresAt] of activeConsoleSubmissions) {
+    if (expiresAt <= now) activeConsoleSubmissions.delete(submissionId);
+  }
+}
+
+function flightEventContextId(event: any, role: string): string {
+  const instance = typeof event.instanceId === "string" && event.instanceId ? stableIdPart(event.instanceId) : "instance";
+  const index = typeof event.eventIndex === "number" || typeof event.eventIndex === "string"
+    ? String(event.eventIndex)
+    : typeof event.timestamp === "string" && event.timestamp
+      ? stableIdPart(event.timestamp)
+      : crypto.randomUUID();
+  return `flight-${instance}-${role}-${index}`;
+}
+
+function stableIdPart(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 96) || "value";
+}
+
+function normalizeMessageContentForContext(content: unknown): Array<Record<string, unknown>> {
+  const blocks = normalizeContentBlocks(content);
+  if (blocks.length > 0) return blocks;
+  const text = textFromContent(content);
+  return text ? [{ type: "text", text }] : [];
 }
 
 function normalizeToolArguments(name: unknown, args: unknown): Record<string, unknown> {
@@ -339,34 +439,56 @@ function humanizeToolName(name: string): string {
 
 function normalizeContentBlocks(content: unknown): Array<Record<string, unknown>> {
   if (typeof content === "string") return [{ type: "text", text: content }];
+  if (content && typeof content === "object" && !Array.isArray(content)) {
+    return normalizeContentBlock(content as Record<string, unknown>);
+  }
   if (!Array.isArray(content)) return [];
   return content.flatMap((block): Array<Record<string, unknown>> => {
     if (!block || typeof block !== "object") return [];
-    const raw = block as Record<string, unknown>;
-    if (raw.type === "text") return [{ type: "text", text: String(raw.text || "") }];
-    if (raw.type === "thinking") return [{ type: "thinking", thinking: String(raw.thinking || "") }];
-    if (raw.type === "toolCall") {
-      return [{
-        type: "toolCall",
-        id: String(raw.id || ""),
-        name: String(raw.name || "tool"),
-        arguments: raw.arguments && typeof raw.arguments === "object" && !Array.isArray(raw.arguments)
-          ? raw.arguments as Record<string, unknown>
-          : {},
-      }];
-    }
-    return [];
+    return normalizeContentBlock(block as Record<string, unknown>);
   });
+}
+
+function normalizeContentBlock(raw: Record<string, unknown>): Array<Record<string, unknown>> {
+  if (raw.type === "text" || raw.type === "input_text" || raw.type === "output_text") {
+    return [{ type: "text", text: String(raw.text ?? raw.content ?? "") }];
+  }
+  if (raw.type === "thinking") return [{ type: "thinking", thinking: String(raw.thinking || "") }];
+  if (raw.type === "toolCall" || raw.type === "tool_call" || raw.type === "tool_use") {
+    const rawArgs = raw.arguments ?? raw.args ?? raw.input;
+    return [{
+      type: "toolCall",
+      id: String(raw.id ?? raw.toolCallId ?? raw.tool_call_id ?? raw.toolUseId ?? raw.tool_use_id ?? ""),
+      name: String(raw.name ?? raw.toolName ?? raw.tool_name ?? "tool"),
+      arguments: rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs)
+        ? rawArgs as Record<string, unknown>
+        : {},
+    }];
+  }
+  if (typeof raw.text === "string") return [{ type: "text", text: raw.text }];
+  if (typeof raw.content === "string") return [{ type: "text", text: raw.content }];
+  if (Array.isArray(raw.content)) return normalizeContentBlocks(raw.content);
+  return [];
 }
 
 function textFromContent(content: unknown): string {
   if (typeof content === "string") return content;
+  if (content && typeof content === "object" && !Array.isArray(content)) {
+    return textFromContentObject(content as Record<string, unknown>);
+  }
   if (!Array.isArray(content)) return "";
   return content.map((block) => {
     if (!block || typeof block !== "object") return "";
-    const raw = block as Record<string, unknown>;
-    return raw.type === "text" && typeof raw.text === "string" ? raw.text : "";
+    return textFromContentObject(block as Record<string, unknown>);
   }).filter(Boolean).join("\n\n");
+}
+
+function textFromContentObject(raw: Record<string, unknown>): string {
+  if (typeof raw.text === "string") return raw.text;
+  if (typeof raw.content === "string") return raw.content;
+  if (Array.isArray(raw.content)) return textFromContent(raw.content);
+  if (typeof raw.value === "string") return raw.value;
+  return "";
 }
 
 function stringifyToolResult(result: unknown): string {

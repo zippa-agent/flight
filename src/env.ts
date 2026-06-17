@@ -8,6 +8,7 @@ export interface Env {
   CRAWDAD_API_BASE?: string;
   CRAWDAD_ASSET_BASE?: string;
   CRAWDAD_API_TOKEN?: string;
+  FLIGHT_CONSOLE_LEDGER?: DurableObjectNamespace;
   SUPABASE_URL?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
   SUPABASE_ANON_KEY?: string;

@@ -12,6 +12,10 @@
     {
       "tag": "v1",
       "new_sqlite_classes": ["FlueRegistry", "FlueTinyfatAgent"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["FlightConsoleLedger"]
     }
   ],
   "vars": {
@@ -21,5 +25,21 @@
     "TINYFAT_MODEL": "fireworks/accounts/fireworks/models/minimax-m2p7",
     "TINYFAT_FIREWORKS_BASE_URL": "https://tinyfat.com/api/fireworks",
     "TINYFAT_EMAIL_SEND_URL": "https://tinyfat.com/api/email/send"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "FLUE_TINYFAT_AGENT",
+        "class_name": "FlueTinyfatAgent"
+      },
+      {
+        "name": "FLUE_REGISTRY",
+        "class_name": "FlueRegistry"
+      },
+      {
+        "name": "FLIGHT_CONSOLE_LEDGER",
+        "class_name": "FlightConsoleLedger"
+      }
+    ]
   }
 }

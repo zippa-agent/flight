@@ -4,6 +4,7 @@ import { jsonError } from "../shared/http";
 import { fetchConsoleHistory, postAgentMessage, streamConsoleHistory, streamConsoleMessage } from "./stream";
 import { flightInstanceId, normalizeFlightWebhook } from "../webhooks/flight-input";
 import { requireConsoleAgent } from "../platform/supabase";
+import { appendConsoleUserEntry } from "./ledger";
 
 type AppContext = Context<{ Bindings: Env }>;
 
@@ -148,10 +149,18 @@ export async function handleConsoleMessage(c: AppContext): Promise<Response> {
   const channel = input.scope.kind === "agent" ? "web" : input.scope.id;
   const user = input.actor.email || input.actor.displayName || input.actor.id;
   const prompt = `[${input.delivery.receivedAt}] [${channel}] [${user}]: ${input.message.text}`;
+  const instanceId = flightInstanceId(input);
   const admission = await postAgentMessage(c, {
     agentId,
-    instanceId: flightInstanceId(input),
+    instanceId,
     message: prompt,
+  });
+  await appendConsoleUserEntry(c.env, instanceId, {
+    submissionId: admission.submissionId,
+    timestamp: input.delivery.receivedAt,
+    prompt,
+  }).catch((error) => {
+    console.warn("Flight console ledger write failed:", error);
   });
   return streamConsoleMessage(c, admission);
 }
