@@ -8,22 +8,16 @@ export function flueEventToUiEvents(event: any): unknown[] {
   if (!event || typeof event !== "object") return [];
   switch (event.type) {
     case "text_delta":
-      return typeof event.text === "string" ? [{ type: "text_delta", text: event.text }] : [];
+      return typeof event.text === "string" ? [{ type: "text_delta", delta: event.text }] : [];
     case "thinking_delta":
-      return typeof event.delta === "string" ? [{ type: "thinking_delta", text: event.delta }] : [];
+      return typeof event.delta === "string" ? [{ type: "thinking_delta", delta: event.delta }] : [];
     case "thinking_end":
-      return typeof event.content === "string" ? [{ type: "thinking_snapshot", text: event.content }] : [];
+      return typeof event.content === "string" ? [{ type: "thinking_patch", thinking: event.content }] : [];
     case "tool_start":
-      return [{
-        type: "tool_start",
-        toolCallId: String(event.toolCallId || crypto.randomUUID()),
-        toolName: String(event.toolName || "tool"),
-        args: normalizeToolArguments(event.args),
-        label: toolLabel(String(event.toolName || "tool"), event.args),
-      }];
+      return [toolCallEvent("toolcall_start", event)];
     case "tool":
       return [{
-        type: "tool_result",
+        type: "toolResult",
         toolCallId: String(event.toolCallId || ""),
         result: stringifyToolResult(event.result),
         isError: Boolean(event.isError),
@@ -31,7 +25,16 @@ export function flueEventToUiEvents(event: any): unknown[] {
     case "message_end": {
       if (event.message?.role !== "assistant") return [];
       const content = normalizeContentBlocks(event.message.content);
-      return [{ type: "assistant_message", content }];
+      return [{
+        type: "assistant_snapshot",
+        entry: {
+          id: assistantEntryId(event, String(event.submissionId || "submission")),
+          type: "message",
+          timestamp: typeof event.timestamp === "string" ? event.timestamp : new Date().toISOString(),
+          role: "assistant",
+          content,
+        },
+      }];
     }
     case "operation":
       return event.isError ? [{ type: "error", message: errorMessage(event.error) }] : [];
@@ -40,6 +43,10 @@ export function flueEventToUiEvents(event: any): unknown[] {
     default:
       return [];
   }
+}
+
+export function terminalUiEvent(): unknown {
+  return { type: "run_complete" };
 }
 
 export function flueEventToAwarenessEntry(input: {
@@ -68,7 +75,7 @@ export function flueEventToAwarenessEntry(input: {
         type: "toolCall",
         id: toolCallId,
         name: String(event.toolName || "tool"),
-        arguments: normalizeToolArguments(event.args),
+        arguments: withToolLabel(String(event.toolName || "tool"), event.args),
         label: toolLabel(String(event.toolName || "tool"), event.args),
       }],
     };
@@ -97,7 +104,7 @@ export function flueEventToAwarenessEntry(input: {
     const content = normalizeContentBlocks(event.message.content);
     if (content.length === 0) return null;
     return {
-      id: `assistant-${stableIdPart(input.submissionId)}-${stableIdPart(String(event.eventIndex ?? timestamp))}`,
+      id: assistantEntryId(event, input.submissionId),
       type: "message",
       timestamp,
       role: "assistant",
@@ -109,6 +116,29 @@ export function flueEventToAwarenessEntry(input: {
   }
 
   return null;
+}
+
+function toolCallEvent(type: "toolcall_start" | "toolcall_delta" | "toolcall_end", event: any): unknown {
+  const name = String(event.toolName || event.name || "tool");
+  return {
+    type,
+    toolCall: {
+      type: "toolCall",
+      id: String(event.toolCallId || event.id || crypto.randomUUID()),
+      name,
+      arguments: withToolLabel(name, event.args),
+    },
+  };
+}
+
+function withToolLabel(name: string, args: unknown): Record<string, unknown> {
+  const normalized = normalizeToolArguments(args);
+  const label = toolLabel(name, normalized);
+  return label ? { ...normalized, label } : normalized;
+}
+
+function assistantEntryId(event: any, submissionId: string): string {
+  return `assistant-${stableIdPart(submissionId)}-${stableIdPart(String(event.eventIndex ?? event.timestamp ?? "final"))}`;
 }
 
 function normalizeContentBlocks(content: unknown): AwarenessContent[] {

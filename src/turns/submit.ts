@@ -12,7 +12,7 @@ import {
 import type { Env } from "../env";
 import { buildTurnPrompt } from "../agent/prompt";
 import { postDirectPrompt, readAgentStream, sseHeaders } from "./flue-client";
-import { flueEventToAwarenessEntry, flueEventToUiEvents, isTerminalFlueEvent } from "./stream";
+import { flueEventToAwarenessEntry, flueEventToUiEvents, isTerminalFlueEvent, terminalUiEvent } from "./stream";
 
 type AppContext = Context<{ Bindings: Env }>;
 
@@ -60,11 +60,13 @@ export async function submitDirectWebTurn(
                 });
               }
 
-              if (isTerminalFlueEvent(flueEvent)) completed = true;
+              if (isTerminalFlueEvent(flueEvent)) {
+                send(terminalUiEvent());
+                completed = true;
+              }
             }
             return completed;
           });
-          send({ type: "done" });
         } catch (error) {
           send({ type: "error", message: error instanceof Error ? error.message : String(error) });
         } finally {

@@ -10,7 +10,8 @@ test("colocated UI does not reference Crawdad-hosted hashed assets", () => {
 });
 
 test("colocated UI includes tool and thinking render paths", () => {
-  assert.match(APP_JS, /tool_start/);
-  assert.match(APP_JS, /tool_result/);
+  assert.match(APP_JS, /toolcall_start/);
+  assert.match(APP_JS, /toolResult/);
   assert.match(APP_JS, /thinking_delta/);
+  assert.match(APP_JS, /assistant_snapshot/);
 });

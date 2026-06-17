@@ -135,7 +135,7 @@ function shellHtml(agentName: string): string {
     </script>
   </head>
   <body>
-    <main id="app" data-agent-name="${safeTitle}"></main>
+    <main id="root" data-agent-name="${safeTitle}"></main>
     <script type="module" src="./assets/app.js"></script>
   </body>
 </html>`;
