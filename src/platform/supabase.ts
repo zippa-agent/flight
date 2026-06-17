@@ -180,7 +180,7 @@ export async function fetchAgentRuntimeRecord(agentId: string, env: Env): Promis
   return rows[0] || null;
 }
 
-export async function requireConsoleAgent(request: Request, env: Env, agentId: string): Promise<{
+export async function requireFlightAgent(request: Request, env: Env, agentId: string): Promise<{
   user: AuthenticatedUser;
   agent: FlightAgentRecord;
 } | Response> {

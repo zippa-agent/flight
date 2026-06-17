@@ -16,12 +16,15 @@
     {
       "tag": "v2",
       "new_sqlite_classes": ["FlightConsoleLedger"]
+    },
+    {
+      "tag": "v3",
+      "deleted_classes": ["FlightConsoleLedger"],
+      "new_sqlite_classes": ["FlightAwareness"]
     }
   ],
   "vars": {
     "CRAWDAD_API_BASE": "https://crawdad.tinyfat.com",
-    "CRAWDAD_ASSET_BASE": "https://crawdad-cf.alexgarcia042.workers.dev",
-    "FLIGHT_INTERNAL_BASE_URL": "https://flight.alexgarcia042.workers.dev",
     "TINYFAT_MODEL": "fireworks/accounts/fireworks/models/minimax-m2p7",
     "TINYFAT_FIREWORKS_BASE_URL": "https://tinyfat.com/api/fireworks",
     "TINYFAT_EMAIL_SEND_URL": "https://tinyfat.com/api/email/send"
@@ -37,8 +40,8 @@
         "class_name": "FlueRegistry"
       },
       {
-        "name": "FLIGHT_CONSOLE_LEDGER",
-        "class_name": "FlightConsoleLedger"
+        "name": "FLIGHT_AWARENESS",
+        "class_name": "FlightAwareness"
       }
     ]
   }

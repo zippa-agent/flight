@@ -1,7 +1,7 @@
 import { registerProvider } from "@flue/runtime";
 import type { Env } from "../env";
 import { fetchAgentRuntimeRecord } from "./supabase";
-import { parentAgentIdFromInstanceId } from "../webhooks/flight-input";
+import { parentAgentIdFromInstanceId } from "../awareness/id";
 
 const DEFAULT_FIREWORKS_MODEL = "fireworks/accounts/fireworks/models/minimax-m2p7";
 const DEFAULT_FIREWORKS_PROXY_BASE = "https://tinyfat.com/api/fireworks";

@@ -1,0 +1,191 @@
+import type { AwarenessContent, AwarenessEntry } from "../awareness/store";
+
+export function isTerminalFlueEvent(event: any): boolean {
+  return event?.type === "idle" || event?.type === "agent_end" || event?.type === "submission_settled";
+}
+
+export function flueEventToUiEvents(event: any): unknown[] {
+  if (!event || typeof event !== "object") return [];
+  switch (event.type) {
+    case "text_delta":
+      return typeof event.text === "string" ? [{ type: "text_delta", text: event.text }] : [];
+    case "thinking_delta":
+      return typeof event.delta === "string" ? [{ type: "thinking_delta", text: event.delta }] : [];
+    case "thinking_end":
+      return typeof event.content === "string" ? [{ type: "thinking_snapshot", text: event.content }] : [];
+    case "tool_start":
+      return [{
+        type: "tool_start",
+        toolCallId: String(event.toolCallId || crypto.randomUUID()),
+        toolName: String(event.toolName || "tool"),
+        args: normalizeToolArguments(event.args),
+        label: toolLabel(String(event.toolName || "tool"), event.args),
+      }];
+    case "tool":
+      return [{
+        type: "tool_result",
+        toolCallId: String(event.toolCallId || ""),
+        result: stringifyToolResult(event.result),
+        isError: Boolean(event.isError),
+      }];
+    case "message_end": {
+      if (event.message?.role !== "assistant") return [];
+      const content = normalizeContentBlocks(event.message.content);
+      return [{ type: "assistant_message", content }];
+    }
+    case "operation":
+      return event.isError ? [{ type: "error", message: errorMessage(event.error) }] : [];
+    case "submission_settled":
+      return event.outcome === "failed" ? [{ type: "error", message: errorMessage(event.error) }] : [];
+    default:
+      return [];
+  }
+}
+
+export function flueEventToAwarenessEntry(input: {
+  event: any;
+  adapter: string;
+  channel?: string;
+  submissionId: string;
+}): AwarenessEntry | null {
+  const event = input.event;
+  if (!event || typeof event !== "object") return null;
+  const timestamp = typeof event.timestamp === "string" && event.timestamp
+    ? event.timestamp
+    : new Date().toISOString();
+
+  if (event.type === "tool_start") {
+    const toolCallId = String(event.toolCallId || crypto.randomUUID());
+    return {
+      id: `tool-call-${stableIdPart(input.submissionId)}-${stableIdPart(toolCallId)}`,
+      type: "tool_call",
+      timestamp,
+      role: "assistant",
+      adapter: input.adapter,
+      channel: input.channel,
+      submissionId: input.submissionId,
+      content: [{
+        type: "toolCall",
+        id: toolCallId,
+        name: String(event.toolName || "tool"),
+        arguments: normalizeToolArguments(event.args),
+        label: toolLabel(String(event.toolName || "tool"), event.args),
+      }],
+    };
+  }
+
+  if (event.type === "tool") {
+    const toolCallId = String(event.toolCallId || "");
+    return {
+      id: `tool-result-${stableIdPart(input.submissionId)}-${stableIdPart(toolCallId || crypto.randomUUID())}`,
+      type: "tool_result",
+      timestamp,
+      role: "tool",
+      adapter: input.adapter,
+      channel: input.channel,
+      submissionId: input.submissionId,
+      content: [{
+        type: "toolResult",
+        toolCallId,
+        result: stringifyToolResult(event.result),
+        isError: Boolean(event.isError),
+      }],
+    };
+  }
+
+  if (event.type === "message_end" && event.message?.role === "assistant") {
+    const content = normalizeContentBlocks(event.message.content);
+    if (content.length === 0) return null;
+    return {
+      id: `assistant-${stableIdPart(input.submissionId)}-${stableIdPart(String(event.eventIndex ?? timestamp))}`,
+      type: "message",
+      timestamp,
+      role: "assistant",
+      adapter: input.adapter,
+      channel: input.channel,
+      submissionId: input.submissionId,
+      content,
+    };
+  }
+
+  return null;
+}
+
+function normalizeContentBlocks(content: unknown): AwarenessContent[] {
+  if (typeof content === "string") return [{ type: "text", text: content }];
+  if (content && typeof content === "object" && !Array.isArray(content)) {
+    return normalizeContentBlock(content as Record<string, unknown>);
+  }
+  if (!Array.isArray(content)) return [];
+  return content.flatMap((block): AwarenessContent[] => {
+    if (!block || typeof block !== "object") return [];
+    return normalizeContentBlock(block as Record<string, unknown>);
+  });
+}
+
+function normalizeContentBlock(raw: Record<string, unknown>): AwarenessContent[] {
+  if (raw.type === "text" || raw.type === "input_text" || raw.type === "output_text") {
+    return [{ type: "text", text: String(raw.text ?? raw.content ?? "") }];
+  }
+  if (raw.type === "thinking") return [{ type: "thinking", thinking: String(raw.thinking || "") }];
+  if (raw.type === "toolCall" || raw.type === "tool_call" || raw.type === "tool_use") {
+    const rawArgs = raw.arguments ?? raw.args ?? raw.input;
+    return [{
+      type: "toolCall",
+      id: String(raw.id ?? raw.toolCallId ?? raw.tool_call_id ?? raw.toolUseId ?? raw.tool_use_id ?? ""),
+      name: String(raw.name ?? raw.toolName ?? raw.tool_name ?? "tool"),
+      arguments: rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs)
+        ? rawArgs as Record<string, unknown>
+        : {},
+    }];
+  }
+  if (typeof raw.text === "string") return [{ type: "text", text: raw.text }];
+  if (typeof raw.content === "string") return [{ type: "text", text: raw.content }];
+  if (Array.isArray(raw.content)) return normalizeContentBlocks(raw.content);
+  return [];
+}
+
+function normalizeToolArguments(args: unknown): Record<string, unknown> {
+  return args && typeof args === "object" && !Array.isArray(args)
+    ? { ...(args as Record<string, unknown>) }
+    : {};
+}
+
+function stringifyToolResult(result: unknown): string {
+  if (typeof result === "string") return result;
+  if (result && typeof result === "object") {
+    const content = (result as { content?: unknown }).content;
+    if (Array.isArray(content)) {
+      const text = content.map((block) => {
+        if (!block || typeof block !== "object") return "";
+        const raw = block as Record<string, unknown>;
+        return raw.type === "text" && typeof raw.text === "string" ? raw.text : "";
+      }).filter(Boolean).join("\n\n");
+      if (text) return text;
+    }
+  }
+  return result === undefined ? "" : JSON.stringify(result);
+}
+
+function toolLabel(name: string, args: unknown): string {
+  const record = normalizeToolArguments(args);
+  if (typeof record.label === "string" && record.label.trim()) return record.label.trim();
+  if (name === "send_message") return "Send message";
+  if (name === "full_bash") return "Full bash";
+  if (name === "bash" || name === "shell") return "Light bash";
+  return name.replace(/^functions\./, "").replace(/[_-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function errorMessage(error: unknown): string {
+  if (!error) return "Flight turn failed.";
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  if (typeof error === "object" && "message" in error && typeof (error as { message?: unknown }).message === "string") {
+    return (error as { message: string }).message;
+  }
+  return JSON.stringify(error);
+}
+
+function stableIdPart(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 96) || "value";
+}
