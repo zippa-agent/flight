@@ -7,10 +7,11 @@ import { normalizeWebEvent } from "../src/adapters/web";
 import type { FlightTurnPayload } from "../src/adapters/types";
 
 const base = "Base Flight instructions.";
+const agentId = "6884e994-60f4-4395-8008-38f73989c34d";
 
 test("web prompt does not name unavailable delivery or full container tools", () => {
   const text = buildAgentInstructions({
-    instanceId: "agent-1--agent--d2Vi",
+    instanceId: `${agentId}--agent--d2Vi`,
     turn: null,
     policy: toolPolicyForTurn(null),
     baseInstructions: base,
@@ -18,9 +19,10 @@ test("web prompt does not name unavailable delivery or full container tools", ()
 
   assert.equal(text.includes("send_message"), false);
   assert.equal(text.includes("full_bash"), false);
-  assert.match(text, /light bash/i);
-  assert.match(text, /not R2/);
-  assert.match(text, /not \/data/);
+  assert.match(text, /durable R2-backed workspace/i);
+  assert.match(text, /tiny-agents-data\/<agent-uuid>/);
+  assert.match(text, /Generic bash: unavailable/);
+  assert.match(text, /not a \/data/);
 });
 
 test("email prompt names send_message only when delivery tool is registered", () => {
@@ -43,7 +45,7 @@ test("email prompt names send_message only when delivery tool is registered", ()
     toolPolicy: { allowSendMessage: true, allowFullBash: false },
   };
   const text = buildAgentInstructions({
-    instanceId: "agent-1--email-thread--bTE",
+    instanceId: `${agentId}--email-thread--bTE`,
     turn,
     policy: toolPolicyForTurn(turn),
     baseInstructions: base,

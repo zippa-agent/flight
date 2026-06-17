@@ -9,6 +9,7 @@ import { toolPolicyForTurn } from "../agent/contract";
 import { resolveTinyFatModel } from "../platform/model";
 import { requireBearer } from "../shared/http";
 import { parseFlightTurnPayload } from "../adapters/types";
+import { r2Workspace, workspaceOwnerIdFromInstanceId } from "../sandboxes/r2-workspace";
 import { resolveTurnTools } from "../tools/registry";
 import baseInstructions from "./tinyfat.md" with { type: "markdown" };
 
@@ -45,6 +46,12 @@ const responseReviewer = defineAgentProfile({
 export default createAgent<unknown, Env>(async ({ id, env, payload }) => {
   const turn = parseFlightTurnPayload(payload);
   const policy = toolPolicyForTurn(turn);
+  if (!env.FLIGHT_WORKSPACE) {
+    throw new Error("Flight requires the FLIGHT_WORKSPACE R2 bucket binding.");
+  }
+
+  const workspaceOwnerId = workspaceOwnerIdFromInstanceId(id);
+
   return {
     model: await resolveTinyFatModel(env, id),
     instructions: buildAgentInstructions({
@@ -55,6 +62,10 @@ export default createAgent<unknown, Env>(async ({ id, env, payload }) => {
     }),
     tools: resolveTurnTools({ env, instanceId: id, turn }),
     subagents: [relationshipContext, supportClassifier, responseReviewer],
+    sandbox: r2Workspace({
+      bucket: env.FLIGHT_WORKSPACE,
+      ownerId: workspaceOwnerId,
+    }),
     cwd: "/workspace",
     durability: {
       maxAttempts: 5,

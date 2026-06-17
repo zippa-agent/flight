@@ -47,6 +47,24 @@ They are not the same thing as TinyFat relationship scopes. Flight uses scopes
 to choose the durable instance, then lets that instance delegate to Flue
 subagents when useful.
 
+## Workspace Storage
+
+Flight maps Flue's standard file tools onto a durable R2 workspace, not the
+default in-memory sandbox. The Worker binding is `FLIGHT_WORKSPACE`, backed by
+the `tiny-agents` bucket.
+
+```text
+/workspace/... -> tiny-agents/tiny-agents-data/<tinyfat-agent-uuid>/...
+```
+
+The workspace is scoped to the parent TinyFat agent UUID, not the relationship
+scope. Web chat, email, group-chat, and widget scopes for the same TinyFat agent
+therefore share files while keeping conversation awareness relationship-local.
+
+The R2 workspace intentionally does not provide a general shell. File tools
+operate directly on R2 objects; build/deploy work belongs behind a dedicated
+platform tool or a full container-backed tool when explicitly available.
+
 ## Container Boundary
 
 The container is a tool backend. Flight should prefer edge-native tools first:

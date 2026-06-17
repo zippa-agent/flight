@@ -14,7 +14,8 @@ export function toolPolicyForTurn(turn: FlightTurnPayload | null): ToolPolicy {
 
 export function contractText(policy: ToolPolicy): string {
   const tools = [
-    "Flue light bash: the default Flue virtual sandbox. It is an ephemeral scratch workspace, not Crawdad, not R2, and not /data.",
+    "Workspace files: /workspace is a durable R2-backed workspace scoped to the parent TinyFat agent UUID under tiny-agents/tiny-agents-data/<agent-uuid>/. It is not a /data mount.",
+    "Generic bash: unavailable in the R2 workspace. Use file tools for workspace changes and a dedicated platform tool for build/deploy work when one is available.",
     policy.allowSendMessage
       ? "send_message: available for this turn. It is the only user-visible delivery path on this messages-only surface."
       : "No provider delivery tool is available for this turn.",

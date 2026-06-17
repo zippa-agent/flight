@@ -29,6 +29,12 @@
     "TINYFAT_FIREWORKS_BASE_URL": "https://tinyfat.com/api/fireworks",
     "TINYFAT_EMAIL_SEND_URL": "https://tinyfat.com/api/email/send"
   },
+  "r2_buckets": [
+    {
+      "binding": "FLIGHT_WORKSPACE",
+      "bucket_name": "tiny-agents"
+    }
+  ],
   "durable_objects": {
     "bindings": [
       {

@@ -6,6 +6,7 @@ export interface Env {
   FLIGHT_WEBHOOK_TOKEN?: string;
   CRAWDAD_API_BASE?: string;
   CRAWDAD_API_TOKEN?: string;
+  FLIGHT_WORKSPACE?: R2Bucket;
   FLIGHT_AWARENESS?: DurableObjectNamespace;
   SUPABASE_URL?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
