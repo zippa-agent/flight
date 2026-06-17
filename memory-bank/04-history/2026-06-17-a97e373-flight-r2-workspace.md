@@ -30,8 +30,18 @@
 - Cloudflare Worker version: `9e6362ad-85e1-44bf-9556-8763b2f4a271`.
 - Routes: `https://flight.alexgarcia042.workers.dev`, `https://flight.tinyfat.com`.
 
+## Live Smoke
+
+- Health check passed: `GET https://flight.tinyfat.com/health` returned `200`.
+- Direct Flue prompt against a fresh Floopy scope was admitted and completed.
+- The live stream showed model tool calls `write` and `read`.
+- Final response returned `flight-r2-fresh-20260617-1512`.
+- Remote R2 object read verified:
+  `tiny-agents/tiny-agents-data/d5848746-66d6-44df-908e-7fce86a598d4/qa-r2-fresh.txt`
+  contained `flight-r2-fresh-20260617-1512`.
+
 ## QA Gaps
 
-- Live web-chat QA against Floopy was not run in this session after deploy.
+- Live browser web-chat QA against Floopy was not run in this session after deploy; direct Flue API QA did pass.
 - The Flue default tool surface may still expose a `bash` tool, but the R2 sandbox returns a clear unsupported result. A future pass should decide whether to replace Flue's default sandbox tools to remove generic bash entirely.
 - The dedicated `deploy_site` platform tool remains future work.
