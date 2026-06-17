@@ -4,6 +4,17 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import tinyfatAgent from "./agents/tinyfat";
 import type { Env } from "./env";
+import { handleEmailWebhook } from "./email/routes";
+import {
+  handleConsoleAsset,
+  handleConsoleDescribe,
+  handleConsoleEvents,
+  handleConsoleEventsStream,
+  handleConsoleMessage,
+  handleConsoleShell,
+  handleConsoleStatus,
+  handleConsoleStop,
+} from "./console/routes";
 import { jsonError, requireBearer } from "./shared/http";
 import {
   flightInstanceId,
@@ -17,6 +28,17 @@ type AppContext = Context<Bindings>;
 const app = new Hono<Bindings>();
 
 app.get("/health", (c) => c.json({ ok: true, service: "flight" }));
+
+app.get("/agents/:agentId", (c) => c.redirect(`/agents/${c.req.param("agentId")}/`));
+app.get("/agents/:agentId/", handleConsoleShell);
+app.get("/agents/:agentId/assets/:asset", handleConsoleAsset);
+
+app.get("/api/v2/agents/:agentId/status", handleConsoleStatus);
+app.post("/api/v2/agents/:agentId/describe", handleConsoleDescribe);
+app.get("/api/v2/agents/:agentId/events", handleConsoleEvents);
+app.get("/api/v2/agents/:agentId/events/stream", handleConsoleEventsStream);
+app.post("/api/v2/agents/:agentId/messages", handleConsoleMessage);
+app.post("/api/v2/agents/:agentId/messages/stop", handleConsoleStop);
 
 async function handleFlightWebhook(c: AppContext): Promise<Response> {
   const unauthorized = requireBearer(c, c.env.FLIGHT_WEBHOOK_TOKEN || c.env.FLIGHT_API_TOKEN);
@@ -59,6 +81,7 @@ async function handleFlightWebhook(c: AppContext): Promise<Response> {
 
 app.post("/webhooks/flight/:agentId", handleFlightWebhook);
 app.post("/flight/webhooks/:agentId", handleFlightWebhook);
+app.post("/webhooks/email/:agentId", handleEmailWebhook);
 
 app.route("/", flue());
 

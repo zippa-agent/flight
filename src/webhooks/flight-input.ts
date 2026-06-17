@@ -278,6 +278,34 @@ export function parentAgentIdFromInstanceId(instanceId: string): string | null {
   }
 }
 
+export function decodeFlightInstanceId(instanceId: string): {
+  agentId: string;
+  scopeKind: string;
+  scopeId: string;
+} | null {
+  const [agentId, scopeKind, encoded] = instanceId.split("--");
+  if (!agentId || !scopeKind || !encoded) return null;
+  try {
+    return { agentId, scopeKind, scopeId: fromBase64Url(encoded) };
+  } catch {
+    return null;
+  }
+}
+
+export function describeFlightInstanceId(instanceId: string): string {
+  const decoded = decodeFlightInstanceId(instanceId);
+  if (!decoded) {
+    return "Current Flight scope: unknown. Treat this as an isolated relationship scope.";
+  }
+  return [
+    "Current Flight scope:",
+    `- TinyFat agent id: ${decoded.agentId}`,
+    `- Scope kind: ${decoded.scopeKind}`,
+    `- Scope id: ${decoded.scopeId}`,
+    "Only use information that belongs in this scope unless trusted tool output or the user explicitly provides more context.",
+  ].join("\n");
+}
+
 export function renderFlightPrompt(input: FlightWebhookInput): string {
   const actor = [
     input.actor.displayName || input.actor.username || input.actor.id,

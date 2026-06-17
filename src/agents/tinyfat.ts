@@ -4,9 +4,11 @@ import {
   type AgentRouteHandler,
 } from "@flue/runtime";
 import type { Env } from "../env";
+import { resolveTinyFatModel } from "../platform/model";
 import { requireBearer } from "../shared/http";
 import { createHostTools } from "../tools/host";
-import instructions from "./tinyfat.md" with { type: "markdown" };
+import { describeFlightInstanceId } from "../webhooks/flight-input";
+import baseInstructions from "./tinyfat.md" with { type: "markdown" };
 
 export const description = "TinyFat Flight scoped relationship agent.";
 
@@ -38,9 +40,9 @@ const responseReviewer = defineAgentProfile({
     "Review the proposed response. Flag cross-scope leakage, unsupported claims, accidental secrets, and provider-delivery assumptions.",
 });
 
-export default createAgent<unknown, Env>(({ id, env }) => ({
-  model: env.TINYFAT_MODEL || "openai/gpt-5.5",
-  instructions,
+export default createAgent<unknown, Env>(async ({ id, env }) => ({
+  model: await resolveTinyFatModel(env, id),
+  instructions: `${baseInstructions}\n\n${describeFlightInstanceId(id)}`,
   tools: createHostTools({ env, instanceId: id }),
   subagents: [relationshipContext, supportClassifier, responseReviewer],
   durability: {

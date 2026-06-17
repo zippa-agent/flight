@@ -4,6 +4,10 @@
   "main": "dist/flight/worker.mjs",
   "compatibility_date": "2026-06-16",
   "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "routes": [
+    { "pattern": "flight.tinyfat.com", "custom_domain": true }
+  ],
   "migrations": [
     {
       "tag": "v1",
@@ -11,6 +15,11 @@
     }
   ],
   "vars": {
-    "CRAWDAD_API_BASE": "https://crawdad.tinyfat.com"
+    "CRAWDAD_API_BASE": "https://crawdad.tinyfat.com",
+    "CRAWDAD_ASSET_BASE": "https://crawdad-cf.alexgarcia042.workers.dev",
+    "FLIGHT_INTERNAL_BASE_URL": "https://flight.alexgarcia042.workers.dev",
+    "TINYFAT_MODEL": "fireworks/accounts/fireworks/models/minimax-m2p7",
+    "TINYFAT_FIREWORKS_BASE_URL": "https://tinyfat.com/api/fireworks",
+    "TINYFAT_EMAIL_SEND_URL": "https://tinyfat.com/api/email/send"
   }
 }

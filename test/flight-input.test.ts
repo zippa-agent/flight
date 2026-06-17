@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  decodeFlightInstanceId,
+  describeFlightInstanceId,
   flightInstanceId,
   normalizeFlightWebhook,
   parentAgentIdFromInstanceId,
@@ -40,6 +42,12 @@ test("derives stable instance id and parent agent id", () => {
   const instanceId = flightInstanceId(input);
   assert.match(instanceId, /^6884e994-60f4-4395-8008-38f73989c34d--channel--/);
   assert.equal(parentAgentIdFromInstanceId(instanceId), "6884e994-60f4-4395-8008-38f73989c34d");
+  assert.deepEqual(decodeFlightInstanceId(instanceId), {
+    agentId: "6884e994-60f4-4395-8008-38f73989c34d",
+    scopeKind: "channel",
+    scopeId: "-100123",
+  });
+  assert.match(describeFlightInstanceId(instanceId), /Scope kind: channel/);
 });
 
 test("renders prompt without raw provider payload", () => {
