@@ -3,6 +3,9 @@ import type { AwarenessEntry } from "../awareness/store";
 import { describeInstanceScope } from "../awareness/id";
 import { contractText, type ToolPolicy } from "./contract";
 
+const MAX_AWARENESS_BLOCK_CHARS = 2_000;
+const MAX_AWARENESS_TAIL_CHARS = 30_000;
+
 export function buildAgentInstructions(input: {
   instanceId: string;
   turn: FlightTurnPayload | null;
@@ -44,6 +47,7 @@ export function buildTurnPrompt(input: {
     input.event.scope.threadId ? `Thread: ${input.event.scope.threadId}` : "",
     `Actor: ${actor}`,
     input.event.message.subject ? `Subject: ${input.event.message.subject}` : "",
+    ...((input.event.scope.instructions || []).map((line) => `Scope instruction: ${line}`)),
     "",
     "Adapter delivery instructions:",
     ...input.event.formatInstructions.map((line) => `- ${line}`),
@@ -61,22 +65,29 @@ function activeAdapterInstructions(event: InboundEvent): string {
     "Active adapter contract:",
     `- Adapter: ${event.adapter}`,
     `- Delivery mode: ${event.deliveryMode}`,
+    ...(event.scope.instructions || []).map((line) => `- Scope: ${line}`),
     ...event.formatInstructions.map((line) => `- ${line}`),
   ].join("\n");
 }
 
 function renderAwarenessTail(entries: AwarenessEntry[]): string {
   if (entries.length === 0) return "(none yet)";
-  return entries.slice(-40).map((entry) => {
+  const rendered = entries.slice(-40).map((entry) => {
     const text = (entry.content || []).map((block) => {
-      if (block.type === "text") return block.text;
-      if (block.type === "thinking") return `[thinking] ${block.thinking}`;
-      if (block.type === "toolCall") return `[tool_call ${block.name}] ${JSON.stringify(block.arguments)}`;
-      if (block.type === "toolResult") return `[tool_result ${block.toolCallId}] ${block.result}`;
+      if (block.type === "text") return clipText(block.text, MAX_AWARENESS_BLOCK_CHARS);
+      if (block.type === "thinking") return `[thinking] ${clipText(block.thinking, MAX_AWARENESS_BLOCK_CHARS)}`;
+      if (block.type === "toolCall") return `[tool_call ${block.name}] ${clipText(JSON.stringify(block.arguments), MAX_AWARENESS_BLOCK_CHARS)}`;
+      if (block.type === "toolResult") return `[tool_result ${block.toolCallId}] ${clipText(block.result, MAX_AWARENESS_BLOCK_CHARS)}`;
       return "";
     }).filter(Boolean).join("\n");
     const role = entry.role || entry.type;
     const channel = entry.channel || entry.adapter;
     return `[${entry.timestamp}] [${channel}] [${role}] ${text}`;
   }).join("\n");
+  return clipText(rendered, MAX_AWARENESS_TAIL_CHARS);
+}
+
+function clipText(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value;
+  return `${value.slice(0, maxChars)}\n[truncated ${value.length - maxChars} chars]`;
 }

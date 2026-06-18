@@ -6,7 +6,7 @@ import { promptWithTurnContext, resolveTurnContext, storeTurnContext } from "../
 import { FakeR2Bucket } from "./support/fake-r2";
 
 const agentId = "6884e994-60f4-4395-8008-38f73989c34d";
-const instanceId = `${agentId}--email-thread--bTE`;
+const instanceId = `${agentId}--agent--d2Vi`;
 
 test("direct Flue payloads can recover stored Flight turn context", async () => {
   const bucket = new FakeR2Bucket();

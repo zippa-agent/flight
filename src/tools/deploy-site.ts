@@ -3,6 +3,7 @@ import * as v from "valibot";
 import type { Env } from "../env";
 import { fetchAgentRuntimeRecord } from "../platform/supabase";
 import { workspaceOwnerIdFromInstanceId, workspaceRootPrefix } from "../sandboxes/r2-workspace";
+import { buildSiteInContainer, type ContainerBuildInput, type ContainerBuildResult } from "./container-build";
 
 const MAX_DEPLOY_FILES = 600;
 const MAX_DEPLOY_BYTES = 25 * 1024 * 1024;
@@ -18,6 +19,9 @@ const DeploySiteInput = v.object({
   path: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(500))),
   environment: v.optional(v.union([v.literal("preview"), v.literal("production")])),
   message: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(200))),
+  build: v.optional(v.boolean()),
+  build_command: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(1000))),
+  output_path: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(500))),
 });
 
 type DeploySiteInputValue = v.InferOutput<typeof DeploySiteInput>;
@@ -31,9 +35,15 @@ export interface DeploySiteResult {
   ok: true;
   site: string;
   environment: "preview" | "production";
+  mode: "static" | "built";
   sourcePath: string;
   files: number;
   bytes: number;
+  build?: {
+    command: string;
+    outputPath: string;
+    log: string;
+  };
   deployment: unknown;
 }
 
@@ -44,7 +54,7 @@ export function createDeploySiteTool(input: {
   return defineTool({
     name: "deploy_site",
     description:
-      "Deploy an already-built static website from /workspace to TinyFat Sites. Use path for the static output directory, such as /workspace or /workspace/dist. This does not run npm install or build an Astro app.",
+      "Deploy a website from /workspace to TinyFat Sites. If the path is an unbuilt npm/Astro app, this builds it in the configured TinyFat container and deploys the built output. If the path already has index.html, this publishes it directly.",
     parameters: DeploySiteInput,
     execute: async (args, signal) => {
       const ownerId = workspaceOwnerIdFromInstanceId(input.instanceId);
@@ -73,6 +83,7 @@ export async function deploySiteFromWorkspace(input: {
   request: DeploySiteInputValue;
   signal?: AbortSignal;
   fetchImpl?: typeof fetch;
+  buildImpl?: (input: ContainerBuildInput) => Promise<ContainerBuildResult>;
 }): Promise<DeploySiteResult> {
   const bucket = input.env.FLIGHT_WORKSPACE;
   if (!bucket) throw new Error("Flight requires the FLIGHT_WORKSPACE R2 bucket binding.");
@@ -84,35 +95,69 @@ export async function deploySiteFromWorkspace(input: {
     relativePath: source.relativePath,
   });
 
-  assertDeployableStaticSite(files, source.displayPath);
-
-  const tarball = await gzip(createTar(files));
+  const shouldBuild = input.request.build === true || (input.request.build !== false && looksLikeBuildableApp(files) && !hasRootIndex(files));
   const environment = input.request.environment || "preview";
   const publishUrl = publishDeployUrl(input.env, input.request.site);
-  const response = await (input.fetchImpl || fetch)(publishUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${input.toolsToken}`,
-      "Content-Type": "application/gzip",
-      "X-Environment": environment,
-      "X-Deploy-Message": cleanDeployMessage(input.request.message),
-    },
+
+  if (shouldBuild) {
+    const sourceTarball = await gzip(createTar(files));
+    const buildResult = await (input.buildImpl || buildSiteInContainer)({
+      env: input.env,
+      agentId: input.ownerId,
+      sourceFiles: files,
+      sourceTarball,
+      buildCommand: input.request.build_command,
+      outputPath: input.request.output_path,
+      signal: input.signal,
+    });
+    const deployment = await publishSiteTarball({
+      fetchImpl: input.fetchImpl,
+      publishUrl,
+      toolsToken: input.toolsToken,
+      environment,
+      message: cleanDeployMessage(input.request.message),
+      body: buildResult.tarball,
+      signal: input.signal,
+    });
+
+    return {
+      ok: true,
+      site: input.request.site,
+      environment,
+      mode: "built",
+      sourcePath: source.displayPath,
+      files: buildResult.files,
+      bytes: buildResult.bytes,
+      build: {
+        command: buildResult.command,
+        outputPath: `/workspace/${buildResult.outputPath === "." ? "" : buildResult.outputPath}`.replace(/\/$/u, "") || "/workspace",
+        log: buildResult.log,
+      },
+      deployment,
+    };
+  }
+
+  assertDeployableStaticSite(files, source.displayPath);
+  const tarball = await gzip(createTar(files));
+  const deployment = await publishSiteTarball({
+    fetchImpl: input.fetchImpl,
+    publishUrl,
+    toolsToken: input.toolsToken,
+    environment,
+    message: cleanDeployMessage(input.request.message),
     body: tarball,
     signal: input.signal,
   });
-  const text = await response.text();
-  if (!response.ok) {
-    throw new Error(`Sites deploy failed (${response.status}): ${text}`);
-  }
 
   return {
     ok: true,
     site: input.request.site,
     environment,
+    mode: "static",
     sourcePath: source.displayPath,
     files: files.length,
     bytes: files.reduce((sum, file) => sum + file.content.byteLength, 0),
-    deployment: text ? JSON.parse(text) as unknown : {},
+    deployment,
   };
 }
 
@@ -175,11 +220,20 @@ function assertDeployableStaticSite(files: DeployFile[], sourcePath: string): vo
 
   if (paths.has("package.json") || [...paths].some((path) => /^astro\.config\./u.test(path))) {
     throw new Error(
-      "deploy_site publishes static files only. This looks like an unbuilt app; a dedicated build-and-deploy tool is still needed for npm install and Astro builds.",
+      "This looks like an unbuilt app. Call deploy_site with build true, or omit build so Flight can build it automatically.",
     );
   }
 
   throw new Error(`No index.html exists at ${sourcePath}. deploy_site needs a static output directory.`);
+}
+
+function hasRootIndex(files: DeployFile[]): boolean {
+  return files.some((file) => file.path === "index.html");
+}
+
+function looksLikeBuildableApp(files: DeployFile[]): boolean {
+  const paths = new Set(files.map((file) => file.path));
+  return paths.has("package.json") || [...paths].some((path) => /^astro\.config\./u.test(path));
 }
 
 function normalizeWorkspacePath(path: string): { relativePath: string; displayPath: string } {
@@ -220,6 +274,33 @@ function shouldSkipDeployPath(path: string): boolean {
 function publishDeployUrl(env: Env, site: string): string {
   const base = env.SITES_PUBLISH_URL?.trim() || DEFAULT_SITES_PUBLISH_URL;
   return `${base.replace(/\/+$/u, "")}/${encodeURIComponent(site)}/deploy`;
+}
+
+async function publishSiteTarball(input: {
+  fetchImpl?: typeof fetch;
+  publishUrl: string;
+  toolsToken: string;
+  environment: "preview" | "production";
+  message: string;
+  body: ArrayBuffer;
+  signal?: AbortSignal;
+}): Promise<unknown> {
+  const response = await (input.fetchImpl || fetch)(input.publishUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${input.toolsToken}`,
+      "Content-Type": "application/gzip",
+      "X-Environment": input.environment,
+      "X-Deploy-Message": input.message,
+    },
+    body: input.body,
+    signal: input.signal,
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`Sites deploy failed (${response.status}): ${text}`);
+  }
+  return text ? JSON.parse(text) as unknown : {};
 }
 
 function cleanDeployMessage(value: string | undefined): string {

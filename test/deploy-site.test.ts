@@ -47,27 +47,55 @@ test("deploy_site publishes a static workspace directory through sites publish",
   assert.equal(new Uint8Array(captured.body || new ArrayBuffer(0))[0], 0x1f);
   assert.equal(new Uint8Array(captured.body || new ArrayBuffer(0))[1], 0x8b);
   assert.equal(result.ok, true);
+  assert.equal(result.mode, "static");
   assert.equal(result.files, 2);
   assert.equal(result.site, "mom-blog");
 });
 
-test("deploy_site rejects an unbuilt app instead of pretending to build it", async () => {
+test("deploy_site builds an unbuilt app in the container before publishing", async () => {
   const bucket = new FakeR2Bucket();
   await bucket.r2.put(`tiny-agents-data/${agentId}/package.json`, "{\"scripts\":{\"build\":\"astro build\"}}");
   await bucket.r2.put(`tiny-agents-data/${agentId}/astro.config.mjs`, "export default {}");
+  await bucket.r2.put(`tiny-agents-data/${agentId}/src/pages/index.astro`, "<h1>Mom blog</h1>");
 
-  await assert.rejects(() => deploySiteFromWorkspace({
+  let builtSourcePaths: string[] = [];
+  let capturedBody: ArrayBuffer | undefined;
+
+  const result = await deploySiteFromWorkspace({
     env: {
       FLIGHT_WORKSPACE: bucket.r2,
       SITES_PUBLISH_URL: "https://publish.test/api/sites",
+      CRAWDAD_API_BASE: "https://crawdad.test",
+      CRAWDAD_API_TOKEN: "fat_ops_test",
     },
     ownerId: agentId,
     toolsToken: "fat_tools_test",
     request: {
       site: "mom-blog",
+      message: "Build deploy",
     },
-    fetchImpl: async () => {
-      throw new Error("publish API should not be called");
+    buildImpl: async (input) => {
+      builtSourcePaths = input.sourceFiles.map((file) => file.path).sort();
+      return {
+        tarball: new Uint8Array([0x1f, 0x8b, 0x08]).buffer,
+        command: "npm run build",
+        outputPath: "dist",
+        files: 1,
+        bytes: 64,
+        log: "built",
+      };
     },
-  }), /unbuilt app/u);
+    fetchImpl: async (_url, init) => {
+      capturedBody = init?.body as ArrayBuffer;
+      return Response.json({ url: "https://main-mom-blog.tinyfat.dev/" });
+    },
+  });
+
+  assert.deepEqual(builtSourcePaths, ["astro.config.mjs", "package.json", "src/pages/index.astro"]);
+  assert.equal(new Uint8Array(capturedBody || new ArrayBuffer(0))[0], 0x1f);
+  assert.equal(new Uint8Array(capturedBody || new ArrayBuffer(0))[1], 0x8b);
+  assert.equal(result.mode, "built");
+  assert.equal(result.files, 1);
+  assert.equal(result.bytes, 64);
+  assert.equal(result.build?.outputPath, "/workspace/dist");
 });

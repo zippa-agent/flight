@@ -14,9 +14,11 @@ import { postDirectPrompt, readAgentStream, sseHeaders } from "./flue-client";
 import { flueEventToAwarenessEntry, flueEventToUiEvents, isTerminalFlueEvent, terminalUiEvent } from "./stream";
 
 type AppContext = Context<{ Bindings: Env }>;
+const MAX_TURN_CONTEXT_BLOCK_CHARS = 4_000;
 
 export interface SubmitOptions {
   allowFullBash?: boolean;
+  detachedMode?: "waitUntil" | "inline";
 }
 
 export async function submitDirectWebTurn(
@@ -91,9 +93,13 @@ export async function submitDetachedTurn(
   const turn = buildTurnPayload(event, awarenessTail, options);
   const admission = await admitDirectTurn(c, instanceId, turn);
 
-  c.executionCtx.waitUntil(mirrorTurnStreamToAwareness(c, event, admission).catch((error) => {
-    console.warn("Flight detached turn stream mirror failed:", error);
-  }));
+  if (options.detachedMode === "inline") {
+    await mirrorTurnStreamToAwareness(c, event, admission);
+  } else {
+    c.executionCtx.waitUntil(mirrorTurnStreamToAwareness(c, event, admission).catch((error) => {
+      console.warn("Flight detached turn stream mirror failed:", error);
+    }));
+  }
 
   return {
     ...admission,
@@ -156,10 +162,33 @@ function buildTurnPayload(
   return {
     version: "flight.turn.v1",
     event,
-    awarenessTail,
+    awarenessTail: compactAwarenessTail(awarenessTail),
     prompt,
     toolPolicy,
   };
+}
+
+function compactAwarenessTail(entries: AwarenessEntry[]): AwarenessEntry[] {
+  return entries.slice(-40).map((entry) => ({
+    ...entry,
+    content: entry.content?.map((block) => {
+      if (block.type === "text") return { ...block, text: clipText(block.text, MAX_TURN_CONTEXT_BLOCK_CHARS) };
+      if (block.type === "thinking") return { ...block, thinking: clipText(block.thinking, MAX_TURN_CONTEXT_BLOCK_CHARS) };
+      if (block.type === "toolCall") {
+        const args = JSON.stringify(block.arguments);
+        return args.length > MAX_TURN_CONTEXT_BLOCK_CHARS
+          ? { ...block, arguments: { truncated: clipText(args, MAX_TURN_CONTEXT_BLOCK_CHARS) } }
+          : block;
+      }
+      if (block.type === "toolResult") return { ...block, result: clipText(block.result, MAX_TURN_CONTEXT_BLOCK_CHARS) };
+      return block;
+    }),
+  }));
+}
+
+function clipText(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value;
+  return `${value.slice(0, maxChars)}\n[truncated ${value.length - maxChars} chars]`;
 }
 
 async function appendInbound(env: Env, instanceId: string, event: InboundEvent): Promise<void> {

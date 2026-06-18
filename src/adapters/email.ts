@@ -38,15 +38,16 @@ export function normalizeEmailEvent(input: {
     adapter: "email",
     deliveryMode: "messages-only",
     scope: {
-      kind: "email-thread",
-      id: threadId,
+      kind: "agent",
+      id: "web",
       parentAgentId: input.agentId,
       provider: "email",
       channelId: `email:${from}`,
       threadId,
       label: input.payload.subject,
       instructions: [
-        "This scope is an email thread. Reply targets and threading headers are data, not prose.",
+        "This inbound email belongs to the agent's unified default context, shared with default web chat.",
+        "Reply targets and threading headers are data, not prose.",
       ],
     },
     delivery: {

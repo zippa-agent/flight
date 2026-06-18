@@ -34,7 +34,10 @@ test("email normalizes to messages-only with explicit email target", () => {
 
   assert.equal(event.adapter, "email");
   assert.equal(event.deliveryMode, "messages-only");
-  assert.equal(event.scope.kind, "email-thread");
+  assert.equal(event.scope.kind, "agent");
+  assert.equal(event.scope.id, "web");
+  assert.equal(event.scope.channelId, "email:alex@example.com");
+  assert.equal(event.scope.threadId, "<msg-1@example.com>");
   assert.equal(event.replyTarget?.kind, "email");
   assert.deepEqual(event.replyTarget?.kind === "email" ? event.replyTarget.to : [], ["alex@example.com"]);
 });

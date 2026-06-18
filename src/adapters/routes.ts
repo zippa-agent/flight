@@ -35,7 +35,7 @@ export async function handleEmailWebhook(c: AppContext): Promise<Response> {
       payload,
       toolsToken: record.tools_token,
     });
-    const receipt = await submitDetachedTurn(c, event);
+    const receipt = await submitDetachedTurn(c, event, { detachedMode: "inline" });
     return c.json({
       ok: true,
       runtime: "flight",

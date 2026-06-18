@@ -45,7 +45,7 @@ test("email prompt names send_message only when delivery tool is registered", ()
     toolPolicy: { allowSendMessage: true, allowFullBash: false },
   };
   const text = buildAgentInstructions({
-    instanceId: `${agentId}--email-thread--bTE`,
+    instanceId: `${agentId}--agent--d2Vi`,
     turn,
     policy: toolPolicyForTurn(turn),
     baseInstructions: base,

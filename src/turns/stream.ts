@@ -1,5 +1,7 @@
 import type { AwarenessContent, AwarenessEntry } from "../awareness/store";
 
+const MAX_TOOL_RESULT_CHARS = 20_000;
+
 export function isTerminalFlueEvent(event: any): boolean {
   return event?.type === "idle" || event?.type === "agent_end" || event?.type === "submission_settled";
 }
@@ -182,7 +184,7 @@ function normalizeToolArguments(args: unknown): Record<string, unknown> {
 }
 
 function stringifyToolResult(result: unknown): string {
-  if (typeof result === "string") return result;
+  if (typeof result === "string") return clipText(result, MAX_TOOL_RESULT_CHARS);
   if (result && typeof result === "object") {
     const content = (result as { content?: unknown }).content;
     if (Array.isArray(content)) {
@@ -191,10 +193,15 @@ function stringifyToolResult(result: unknown): string {
         const raw = block as Record<string, unknown>;
         return raw.type === "text" && typeof raw.text === "string" ? raw.text : "";
       }).filter(Boolean).join("\n\n");
-      if (text) return text;
+      if (text) return clipText(text, MAX_TOOL_RESULT_CHARS);
     }
   }
-  return result === undefined ? "" : JSON.stringify(result);
+  return result === undefined ? "" : clipText(JSON.stringify(result), MAX_TOOL_RESULT_CHARS);
+}
+
+function clipText(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value;
+  return `${value.slice(0, maxChars)}\n[truncated ${value.length - maxChars} chars]`;
 }
 
 function toolLabel(name: string, args: unknown): string {

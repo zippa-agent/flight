@@ -39,6 +39,18 @@ test("Flue tool events expose labeled tool calls and results", () => {
   }]);
 });
 
+test("Flue tool result text is bounded before UI and awareness storage", () => {
+  const huge = "x".repeat(25_000);
+  const [event] = flueEventToUiEvents({
+    type: "tool",
+    toolCallId: "call-1",
+    result: huge,
+  }) as Array<{ result: string }>;
+
+  assert.equal(event.result.length < huge.length, true);
+  assert.match(event.result, /truncated 5000 chars/u);
+});
+
 test("Flue assistant completion emits a snapshot and terminal run event", () => {
   const events = flueEventToUiEvents({
     type: "message_end",

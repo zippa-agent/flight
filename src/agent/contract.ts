@@ -16,7 +16,7 @@ export function contractText(policy: ToolPolicy): string {
   const tools = [
     "Workspace files: /workspace is a durable R2-backed workspace scoped to the parent TinyFat agent UUID under tiny-agents/tiny-agents-data/<agent-uuid>/. It is not a /data mount.",
     "Generic bash: unavailable in the R2 workspace. Use file tools for workspace changes and a dedicated platform tool for build/deploy work when one is available.",
-    "deploy_site: available for static site publishing from /workspace. It deploys an already-built directory with index.html; it does not run npm install or Astro builds.",
+    "deploy_site: available for website publishing from /workspace. It publishes static directories directly and builds npm/Astro projects in a temporary TinyFat container before deploy.",
     policy.allowSendMessage
       ? "send_message: available for this turn. It is the only user-visible delivery path on this messages-only surface."
       : "No provider delivery tool is available for this turn.",

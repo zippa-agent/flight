@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { flightInstanceId } from "../src/awareness/id";
 import { normalizeEmailEvent } from "../src/adapters/email";
+import { normalizeWebEvent } from "../src/adapters/web";
 
-test("same email thread maps to one Flight instance id", () => {
-  const first = normalizeEmailEvent({
+test("default email and default web chat map to one unified Flight instance id", () => {
+  const email = normalizeEmailEvent({
     agentId: "agent-1",
     toolsToken: "fat_tools_test",
     payload: {
@@ -15,18 +16,11 @@ test("same email thread maps to one Flight instance id", () => {
       messageId: "<m1@example.com>",
     },
   });
-  const second = normalizeEmailEvent({
+  const web = normalizeWebEvent({
     agentId: "agent-1",
-    toolsToken: "fat_tools_test",
-    payload: {
-      from: "alex@example.com",
-      to: "floopy@tinyfat.com",
-      subject: "Re: Question",
-      body: "two",
-      messageId: "<m2@example.com>",
-      inReplyTo: "<m1@example.com>",
-    },
+    user: { id: "u1", email: "alex@example.com" },
+    body: { message: "two" },
   });
 
-  assert.equal(flightInstanceId(first), flightInstanceId(second));
+  assert.equal(flightInstanceId(email), flightInstanceId(web));
 });
