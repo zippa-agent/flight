@@ -58,10 +58,14 @@ export interface EmailReplyTarget {
   kind: "email";
   to: string[];
   cc?: string[];
+  from?: string;
+  channelId?: string;
   subject: string;
   inReplyTo?: string;
   references?: string;
   replyQuote?: EmailReplyQuote;
+  threadId?: string;
+  threadTarget?: string;
   toolsToken: string;
 }
 

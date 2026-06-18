@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import type { Env } from "../env";
-import { normalizeEmailEvent, type EmailPayload } from "./email";
+import { cleanEmailBody, normalizeEmailAddress, normalizeEmailEvent, type EmailPayload } from "./email";
+import { appendEmailThreadEvent, readRelatedEmailThreadForEvent } from "./email/thread-ledger";
 import { normalizeFlightEvent } from "./flight";
 import { fetchAgentRuntimeRecord } from "../platform/supabase";
 import { jsonError, requireBearer } from "../shared/http";
@@ -30,10 +31,36 @@ export async function handleEmailWebhook(c: AppContext): Promise<Response> {
   if (!record.tools_token) return jsonError("Agent tools token is not configured.", 500);
 
   try {
+    const receivedAt = new Date();
+    const from = normalizeEmailAddress(payload.from);
+    const channelId = `email:${from || payload.from}`;
+    const threadRecords = await readRelatedEmailThreadForEvent(c.env, agentId, {
+      channelId,
+      subject: payload.subject,
+      messageId: payload.messageId,
+      inReplyTo: payload.inReplyTo,
+      references: payload.references,
+    });
     const event = normalizeEmailEvent({
       agentId,
       payload,
       toolsToken: record.tools_token,
+      threadRecords,
+      now: receivedAt,
+    });
+    await appendEmailThreadEvent(c.env, agentId, {
+      type: "inbound",
+      at: event.delivery.receivedAt,
+      channelId: event.scope.channelId || channelId,
+      from: event.actor.email || payload.from,
+      to: [payload.to],
+      subject: payload.subject,
+      body: cleanEmailBody(payload),
+      messageId: payload.messageId,
+      inReplyTo: payload.inReplyTo,
+      references: payload.references,
+    }).catch((error) => {
+      console.warn("Flight email thread ledger inbound append failed:", error);
     });
     const receipt = await submitDetachedTurn(c, event, { detachedMode: "inline" });
     return c.json({

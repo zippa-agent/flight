@@ -4,11 +4,20 @@ import {
   buildReplyThreadHeaders,
   compileReferences,
   composeEmailReplyBody,
+  cleanEmailBody,
   normalizeEmailEvent,
   normalizeMessageIdForHeader,
   parseReferencesHeader,
   stripQuotedEmailText,
 } from "../src/adapters/email";
+import {
+  appendEmailThreadEvent,
+  collectEmailThreadListings,
+  emailThreadIdForEvent,
+  readEmailThreadForEvent,
+  readRelatedEmailThreadForEvent,
+} from "../src/adapters/email/thread-ledger";
+import { FakeR2Bucket } from "./support/fake-r2";
 
 test("email ingress strips Gmail-style quoted history from model-visible text", () => {
   const body = [
@@ -86,4 +95,202 @@ test("email replies include a native-style quoted prior inbound body", () => {
   assert.match(body, /^Here is the answer\./u);
   assert.match(body, /On Thu, Jun 18, 2026 at/u);
   assert.match(body, /> Fresh request for the agent\./u);
+});
+
+test("email reply quote reconstructs the prior thread chain with dated headers", () => {
+  const records = [
+    {
+      type: "inbound" as const,
+      at: "2026-06-18T10:00:00.000Z",
+      channelId: "email:alex@example.com",
+      from: "Alex Garcia <alex@example.com>",
+      to: ["floopy@tinyfat.ai"],
+      subject: "Project",
+      body: "brrrrrrr hello",
+      messageId: "<root@example.com>",
+      threadKey: "message:root@example.com",
+      threadId: "thread-1",
+    },
+    {
+      type: "outbound" as const,
+      at: "2026-06-18T10:01:00.000Z",
+      channelId: "email:alex@example.com",
+      from: "floopy@tinyfat.ai",
+      to: ["alex@example.com"],
+      subject: "Re: Project",
+      body: "beep boop! hello to you too.",
+      inReplyTo: "<root@example.com>",
+      references: "<root@example.com>",
+      threadKey: "message:root@example.com",
+      threadId: "thread-1",
+    },
+  ];
+
+  const event = normalizeEmailEvent({
+    agentId: "agent-1",
+    toolsToken: "fat_tools_test",
+    threadRecords: records,
+    now: new Date("2026-06-18T10:02:00.000Z"),
+    payload: {
+      from: "Alex Garcia <alex@example.com>",
+      fromFull: "Alex Garcia <alex@example.com>",
+      to: "floopy@tinyfat.ai",
+      subject: "Re: Project",
+      body: "what's up?",
+      messageId: "<reply@example.com>",
+      references: "<root@example.com>",
+    },
+  });
+
+  assert.equal(event.replyTarget?.kind, "email");
+  if (event.replyTarget?.kind !== "email") throw new Error("expected email target");
+  const delivered = composeEmailReplyBody("nothing much.", event.replyTarget.replyQuote);
+
+  assert.match(delivered, /nothing much\./u);
+  assert.match(delivered, /On Thu, Jun 18, 2026 at .+Alex Garcia <alex@example\.com> wrote:/u);
+  assert.match(delivered, /> what's up\?/u);
+  assert.match(delivered, /> On Thu, Jun 18, 2026 at .+floopy@tinyfat\.ai wrote:/u);
+  assert.match(delivered, /> > beep boop! hello to you too\./u);
+  assert.match(delivered, /> > On Thu, Jun 18, 2026 at .+Alex Garcia <alex@example\.com> wrote:/u);
+  assert.match(delivered, /> > > brrrrrrr hello/u);
+  assert.doesNotMatch(delivered, /On Alex Garcia <alex@example\.com> wrote:/u);
+});
+
+test("email thread ledger stores immutable R2 events and reloads a thread", async () => {
+  const bucket = new FakeR2Bucket();
+  const agentId = "6884e994-60f4-4395-8008-38f73989c34d";
+  const env = { FLIGHT_WORKSPACE: bucket.r2 };
+  const threadEvent = {
+    channelId: "email:alex@example.com",
+    subject: "Project",
+    messageId: "<root@example.com>",
+  };
+  const threadId = emailThreadIdForEvent(threadEvent);
+
+  await appendEmailThreadEvent(env, agentId, {
+    type: "inbound",
+    at: "2026-06-18T10:00:00.000Z",
+    ...threadEvent,
+    from: "alex@example.com",
+    to: ["floopy@tinyfat.ai"],
+    body: "hello",
+  });
+  await appendEmailThreadEvent(env, agentId, {
+    type: "outbound",
+    at: "2026-06-18T10:01:00.000Z",
+    channelId: "email:alex@example.com",
+    subject: "Re: Project",
+    inReplyTo: "<root@example.com>",
+    references: "<root@example.com>",
+    from: "floopy@tinyfat.ai",
+    to: ["alex@example.com"],
+    body: "hi",
+  });
+
+  const records = await readEmailThreadForEvent(env, agentId, threadEvent);
+  assert.equal(records.length, 2);
+  assert.equal(records[0].threadId, threadId);
+  assert.equal(records[1].threadId, threadId);
+  assert.match(bucket.keys()[0], /tiny-agents-data\/6884e994-60f4-4395-8008-38f73989c34d\/\.flight\/email-thread-events\//u);
+});
+
+test("email thread reconstruction falls back to channel and subject when headers are missing", async () => {
+  const bucket = new FakeR2Bucket();
+  const agentId = "6884e994-60f4-4395-8008-38f73989c34d";
+  const env = { FLIGHT_WORKSPACE: bucket.r2 };
+
+  await appendEmailThreadEvent(env, agentId, {
+    type: "inbound",
+    at: "2026-06-18T10:00:00.000Z",
+    channelId: "email:alex@example.com",
+    subject: "Flight thread parity",
+    from: "alex@example.com",
+    to: ["floopy@tinyfat.ai"],
+    body: "THREAD_A",
+    messageId: "<a@example.com>",
+  });
+  await appendEmailThreadEvent(env, agentId, {
+    type: "outbound",
+    at: "2026-06-18T10:01:00.000Z",
+    channelId: "email:alex@example.com",
+    subject: "Re: Flight thread parity",
+    from: "floopy@tinyfat.ai",
+    to: ["alex@example.com"],
+    body: "REPLY_A",
+    inReplyTo: "<a@example.com>",
+    references: "<a@example.com>",
+  });
+
+  const threadRecords = await readRelatedEmailThreadForEvent(env, agentId, {
+    channelId: "email:alex@example.com",
+    subject: "Re: Flight thread parity",
+    messageId: "<b@example.com>",
+  });
+  assert.equal(threadRecords.length, 2);
+
+  const event = normalizeEmailEvent({
+    agentId,
+    toolsToken: "fat_tools_test",
+    threadRecords,
+    now: new Date("2026-06-18T10:02:00.000Z"),
+    payload: {
+      from: "alex@example.com",
+      to: "floopy@tinyfat.ai",
+      subject: "Re: Flight thread parity",
+      body: "THREAD_B",
+      messageId: "<b@example.com>",
+    },
+  });
+  assert.equal(event.replyTarget?.kind, "email");
+  if (event.replyTarget?.kind !== "email") throw new Error("expected email target");
+  const delivered = composeEmailReplyBody("REPLY_B", event.replyTarget.replyQuote);
+
+  assert.match(delivered, /REPLY_B/u);
+  assert.match(delivered, /> THREAD_B/u);
+  assert.match(delivered, /> > REPLY_A/u);
+  assert.match(delivered, /> > > THREAD_A/u);
+});
+
+test("email thread listings collapse missing-header replies into a stable send target", async () => {
+  const bucket = new FakeR2Bucket();
+  const agentId = "6884e994-60f4-4395-8008-38f73989c34d";
+  const env = { FLIGHT_WORKSPACE: bucket.r2 };
+
+  await appendEmailThreadEvent(env, agentId, {
+    type: "inbound",
+    at: "2026-06-18T10:00:00.000Z",
+    channelId: "email:alex@example.com",
+    subject: "Project",
+    from: "alex@example.com",
+    to: ["floopy@tinyfat.ai"],
+    body: "first",
+    messageId: "<first@example.com>",
+  });
+  await appendEmailThreadEvent(env, agentId, {
+    type: "inbound",
+    at: "2026-06-18T10:02:00.000Z",
+    channelId: "email:alex@example.com",
+    subject: "Re: Project",
+    from: "alex@example.com",
+    to: ["floopy@tinyfat.ai"],
+    body: "second",
+    messageId: "<second@example.com>",
+  });
+
+  const listings = await collectEmailThreadListings(env, agentId);
+  assert.equal(listings.length, 1);
+  assert.equal(listings[0].messageCount, 2);
+  assert.equal(listings[0].subject, "Re: Project");
+  assert.match(listings[0].sendTarget, /^email-thread:[a-f0-9]{16}$/u);
+});
+
+test("cleanEmailBody strips quoted content before ledger storage", () => {
+  const body = [
+    "Fresh line",
+    "",
+    "On Thu, Jun 18, 2026 at 10:00 AM Alex <alex@example.com> wrote:",
+    "> Old line",
+  ].join("\n");
+
+  assert.equal(cleanEmailBody({ from: "alex@example.com", to: "floopy@tinyfat.ai", body }), "Fresh line");
 });

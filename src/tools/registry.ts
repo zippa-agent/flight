@@ -4,6 +4,8 @@ import type { Env } from "../env";
 import { toolPolicyForTurn } from "../agent/contract";
 import { createDeploySiteTool } from "./deploy-site";
 import { createFullBashTool } from "./full-bash";
+import { createListChannelsTool } from "./list-channels";
+import { createReadThreadTool } from "./read-thread";
 import { createSendMessageTool } from "./send-message";
 
 export function resolveTurnTools(input: {
@@ -22,6 +24,16 @@ export function resolveTurnTools(input: {
   }
 
   if (input.turn && policy.allowSendMessage) {
+    if (input.env.FLIGHT_WORKSPACE && input.turn.event.adapter === "email") {
+      tools.push(createListChannelsTool({
+        env: input.env,
+        agentId: input.turn.event.agentId,
+      }));
+      tools.push(createReadThreadTool({
+        env: input.env,
+        agentId: input.turn.event.agentId,
+      }));
+    }
     tools.push(createSendMessageTool({
       env: input.env,
       instanceId: input.instanceId,
@@ -46,6 +58,12 @@ export function availableToolNames(input: {
   const policy = toolPolicyForTurn(input.turn);
   return [
     input.env.FLIGHT_WORKSPACE ? "deploy_site" : null,
+    input.env.FLIGHT_WORKSPACE && input.turn?.event.adapter === "email" && policy.allowSendMessage
+      ? "list_channels"
+      : null,
+    input.env.FLIGHT_WORKSPACE && input.turn?.event.adapter === "email" && policy.allowSendMessage
+      ? "read_thread"
+      : null,
     policy.allowSendMessage ? "send_message" : null,
     policy.allowFullBash && input.env.CRAWDAD_API_BASE && input.env.CRAWDAD_API_TOKEN ? "full_bash" : null,
   ].filter((name): name is string => !!name);

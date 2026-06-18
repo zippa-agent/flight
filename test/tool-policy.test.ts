@@ -36,7 +36,12 @@ test("messages-only email turns expose send_message", () => {
   };
 
   assert.deepEqual(availableToolNames({ env, turn }), ["send_message"]);
-  assert.deepEqual(availableToolNames({ env: workspaceEnv, turn }), ["deploy_site", "send_message"]);
+  assert.deepEqual(availableToolNames({ env: workspaceEnv, turn }), [
+    "deploy_site",
+    "list_channels",
+    "read_thread",
+    "send_message",
+  ]);
 });
 
 test("full_bash requires both policy and Crawdad credentials", () => {

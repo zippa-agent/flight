@@ -1,6 +1,11 @@
 import type { EmailReplyQuote, InboundEvent } from "./types";
 import { stripQuotedEmailText } from "./email/quote-stripper";
 import { buildReplyThreadHeaders, normalizeMessageIdForHeader, parseReferencesHeader } from "./email/thread-headers";
+import {
+  buildThreadedReplyQuote,
+  emailThreadIdForEvent,
+  type EmailThreadLedgerRecord,
+} from "./email/thread-ledger";
 
 export { composeEmailReplyBody } from "./email/reply-composer";
 export { stripQuotedEmailText } from "./email/quote-stripper";
@@ -21,6 +26,7 @@ export interface EmailPayload {
   inReplyTo?: string;
   references?: string;
   allRecipients?: string[];
+  sentAt?: string;
   replyQuote?: EmailReplyQuote;
   attachments?: Array<{
     filename: string;
@@ -33,6 +39,7 @@ export function normalizeEmailEvent(input: {
   agentId: string;
   payload: EmailPayload;
   toolsToken: string;
+  threadRecords?: EmailThreadLedgerRecord[];
   now?: Date;
 }): InboundEvent {
   const from = normalizeEmailAddress(input.payload.from);
@@ -41,8 +48,18 @@ export function normalizeEmailEvent(input: {
   if (!input.payload.body?.trim()) throw new Error("Missing email body.");
 
   const now = input.now || new Date();
-  const cleanBody = stripQuotedEmailText(input.payload.body) || input.payload.body.trim();
+  const receivedAt = now.toISOString();
+  const cleanBody = cleanEmailBody(input.payload);
+  const channelId = `email:${from}`;
   const threadId = emailThreadId(input.payload);
+  const privateThreadId = emailThreadIdForEvent({
+    channelId,
+    subject: input.payload.subject,
+    messageId: input.payload.messageId,
+    inReplyTo: input.payload.inReplyTo,
+    references: input.payload.references,
+  });
+  const threadTarget = `email-thread:${privateThreadId}`;
   const recipients = emailReplyRecipients(input.payload);
   const replyHeaders = buildReplyThreadHeaders(input.payload.messageId, input.payload.references);
 
@@ -56,18 +73,19 @@ export function normalizeEmailEvent(input: {
       id: "web",
       parentAgentId: input.agentId,
       provider: "email",
-      channelId: `email:${from}`,
+      channelId,
       threadId,
       label: input.payload.subject,
       instructions: [
         "This inbound email belongs to the agent's unified default context, shared with default web chat.",
         "Reply targets and threading headers are data, not prose.",
+        `Current email thread target: ${threadTarget}.`,
       ],
     },
     delivery: {
       id: input.payload.messageId || crypto.randomUUID(),
       provider: "email",
-      receivedAt: now.toISOString(),
+      receivedAt,
     },
     actor: {
       id: from,
@@ -82,19 +100,32 @@ export function normalizeEmailEvent(input: {
       kind: "email",
       to: recipients.to,
       cc: recipients.cc,
+      from: input.payload.to,
+      channelId,
       subject: replySubject(input.payload.subject),
       inReplyTo: replyHeaders.in_reply_to,
       references: replyHeaders.references,
-      replyQuote: buildReplyQuote(input.payload, cleanBody),
+      replyQuote: buildReplyQuote(input.payload, cleanBody, input.threadRecords || [], receivedAt),
+      threadId: privateThreadId,
+      threadTarget,
       toolsToken: input.toolsToken,
     },
     formatInstructions: [
       "This is an email reply surface.",
       "Ordinary assistant text is internal harness output and is not sent to the email participants.",
       "To produce a user-visible reply, call send_message with the email body.",
+      `The current email thread target is ${threadTarget}; use it exactly if a tool asks for a target.`,
       "Do not include provider metadata, Message-ID headers, or markdown fences unless the user explicitly asks for them.",
     ],
+    context: {
+      emailThreadId: privateThreadId,
+      emailThreadTarget: threadTarget,
+    },
   };
+}
+
+export function cleanEmailBody(payload: EmailPayload): string {
+  return stripQuotedEmailText(payload.body) || payload.body.trim();
 }
 
 export function normalizeEmailAddress(value: string | null | undefined): string | null {
@@ -152,13 +183,28 @@ function replySubject(subject: string | undefined): string {
   return /^re:/i.test(trimmed) ? trimmed : `Re: ${trimmed}`;
 }
 
-function buildReplyQuote(payload: EmailPayload, cleanBody: string): EmailReplyQuote | undefined {
-  const body = payload.replyQuote?.body?.trim() || cleanBody.trim();
-  if (!body) return undefined;
-  const quote: EmailReplyQuote = {
-    body,
-    from: payload.replyQuote?.from || payload.fromFull || payload.from,
+function buildReplyQuote(
+  payload: EmailPayload,
+  cleanBody: string,
+  threadRecords: EmailThreadLedgerRecord[],
+  fallbackSentAt: string,
+): EmailReplyQuote | undefined {
+  const currentBody = payload.replyQuote?.body?.trim() || cleanBody.trim();
+  if (!currentBody) return undefined;
+
+  const currentFrom = payload.replyQuote?.from || payload.fromFull || payload.from;
+  const currentSentAt = payload.replyQuote?.sentAt || payload.sentAt || fallbackSentAt;
+  const threaded = buildThreadedReplyQuote({
+    records: threadRecords,
+    currentBody,
+    currentFrom,
+    currentSentAt,
+  });
+  if (threaded) return threaded;
+
+  return {
+    body: currentBody,
+    from: currentFrom,
+    sentAt: currentSentAt,
   };
-  if (payload.replyQuote?.sentAt) quote.sentAt = payload.replyQuote.sentAt;
-  return quote;
 }
