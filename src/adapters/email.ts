@@ -1,4 +1,15 @@
-import type { InboundEvent } from "./types";
+import type { EmailReplyQuote, InboundEvent } from "./types";
+import { stripQuotedEmailText } from "./email/quote-stripper";
+import { buildReplyThreadHeaders, normalizeMessageIdForHeader, parseReferencesHeader } from "./email/thread-headers";
+
+export { composeEmailReplyBody } from "./email/reply-composer";
+export { stripQuotedEmailText } from "./email/quote-stripper";
+export {
+  buildReplyThreadHeaders,
+  compileReferences,
+  normalizeMessageIdForHeader,
+  parseReferencesHeader,
+} from "./email/thread-headers";
 
 export interface EmailPayload {
   from: string;
@@ -10,6 +21,7 @@ export interface EmailPayload {
   inReplyTo?: string;
   references?: string;
   allRecipients?: string[];
+  replyQuote?: EmailReplyQuote;
   attachments?: Array<{
     filename: string;
     content_type?: string;
@@ -29,8 +41,10 @@ export function normalizeEmailEvent(input: {
   if (!input.payload.body?.trim()) throw new Error("Missing email body.");
 
   const now = input.now || new Date();
+  const cleanBody = stripQuotedEmailText(input.payload.body) || input.payload.body.trim();
   const threadId = emailThreadId(input.payload);
   const recipients = emailReplyRecipients(input.payload);
+  const replyHeaders = buildReplyThreadHeaders(input.payload.messageId, input.payload.references);
 
   return {
     version: "flight.inbound.v1",
@@ -62,15 +76,16 @@ export function normalizeEmailEvent(input: {
     },
     message: {
       subject: input.payload.subject,
-      text: buildEmailMessageText(input.payload),
+      text: buildEmailMessageText(input.payload, cleanBody),
     },
     replyTarget: {
       kind: "email",
       to: recipients.to,
       cc: recipients.cc,
       subject: replySubject(input.payload.subject),
-      inReplyTo: input.payload.messageId,
-      references: buildReferences(input.payload),
+      inReplyTo: replyHeaders.in_reply_to,
+      references: replyHeaders.references,
+      replyQuote: buildReplyQuote(input.payload, cleanBody),
       toolsToken: input.toolsToken,
     },
     formatInstructions: [
@@ -90,30 +105,27 @@ export function normalizeEmailAddress(value: string | null | undefined): string 
   return candidate.includes("@") ? candidate : null;
 }
 
-function buildEmailMessageText(payload: EmailPayload): string {
+function buildEmailMessageText(payload: EmailPayload, body: string): string {
   const parts = [
     `From: ${payload.fromFull || payload.from}`,
     `To: ${payload.to}`,
   ];
   if (payload.allRecipients?.length) parts.push(`Other recipients: ${payload.allRecipients.join(", ")}`);
   if (payload.subject) parts.push(`Subject: ${payload.subject}`);
-  if (payload.messageId) parts.push(`Message-ID: ${payload.messageId}`);
-  if (payload.inReplyTo) parts.push(`In-Reply-To: ${payload.inReplyTo}`);
-  if (payload.references) parts.push(`References: ${payload.references}`);
   if (payload.attachments?.length) {
     parts.push(`Attachments: ${payload.attachments.map((attachment) => attachment.filename).join(", ")}`);
   }
-  parts.push("", payload.body);
+  parts.push("", body);
   return parts.join("\n");
 }
 
 function emailThreadId(payload: EmailPayload): string {
-  if (payload.inReplyTo?.trim()) return payload.inReplyTo.trim();
-  if (payload.references?.trim()) {
-    const references = payload.references.trim().split(/\s+/);
-    if (references[0]) return references[0];
-  }
-  if (payload.messageId?.trim()) return payload.messageId.trim();
+  const rootReference = parseReferencesHeader(payload.references)[0];
+  if (rootReference) return rootReference;
+  const inReplyTo = normalizeMessageIdForHeader(payload.inReplyTo);
+  if (inReplyTo) return inReplyTo;
+  const messageId = normalizeMessageIdForHeader(payload.messageId);
+  if (messageId) return messageId;
   const from = normalizeEmailAddress(payload.from) || payload.from;
   return `${from}:${payload.to}:${payload.subject || "(no subject)"}`.toLowerCase();
 }
@@ -140,9 +152,13 @@ function replySubject(subject: string | undefined): string {
   return /^re:/i.test(trimmed) ? trimmed : `Re: ${trimmed}`;
 }
 
-function buildReferences(payload: EmailPayload): string {
-  return [payload.references, payload.messageId]
-    .flatMap((part) => part?.trim().split(/\s+/) || [])
-    .filter(Boolean)
-    .join(" ");
+function buildReplyQuote(payload: EmailPayload, cleanBody: string): EmailReplyQuote | undefined {
+  const body = payload.replyQuote?.body?.trim() || cleanBody.trim();
+  if (!body) return undefined;
+  const quote: EmailReplyQuote = {
+    body,
+    from: payload.replyQuote?.from || payload.fromFull || payload.from,
+  };
+  if (payload.replyQuote?.sentAt) quote.sentAt = payload.replyQuote.sentAt;
+  return quote;
 }

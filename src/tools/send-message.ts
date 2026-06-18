@@ -2,6 +2,7 @@ import { defineTool, type ToolDefinition } from "@flue/runtime";
 import * as v from "valibot";
 import type { FlightTurnPayload } from "../adapters/types";
 import type { Env } from "../env";
+import { composeEmailReplyBody } from "../adapters/email";
 import { appendAwarenessEntry, assistantAwarenessEntry } from "../awareness/store";
 
 const SendMessageInput = v.object({
@@ -24,11 +25,12 @@ export function createSendMessageTool(input: {
       if (!target) throw new Error("This turn has no reply target.");
 
       if (target.kind === "email") {
+        const deliveredBody = composeEmailReplyBody(body, target.replyQuote);
         const result = await sendEmail(input.env, target.toolsToken, {
           to: target.to,
           cc: target.cc?.length ? target.cc : undefined,
           subject: subject || target.subject,
-          body,
+          body: deliveredBody,
           in_reply_to: target.inReplyTo,
           references: target.references,
           log: "none",

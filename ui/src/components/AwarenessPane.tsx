@@ -70,7 +70,7 @@ export function AwarenessPane({
   const [initialDraft] = useState(initialDraftFromUrl);
 
   const contextEntriesForVoice = useMemo(
-    () => normalizeToolResults(mergeOptimisticEntries(entries, userEntry, streamingEntry, localEntries)),
+    () => normalizeToolTimeline(mergeOptimisticEntries(entries, userEntry, streamingEntry, localEntries)),
     [entries, userEntry, streamingEntry, localEntries],
   );
 
@@ -99,7 +99,7 @@ export function AwarenessPane({
   );
 
   const visibleEntries = useMemo(
-    () => normalizeToolResults(mergeOptimisticEntries(entries, userEntry, streamingEntry, localVisibleEntries)),
+    () => normalizeToolTimeline(mergeOptimisticEntries(entries, userEntry, streamingEntry, localVisibleEntries)),
     [entries, userEntry, streamingEntry, localVisibleEntries],
   );
 
@@ -603,6 +603,77 @@ function normalizeToolResults(entries: AwarenessEntry[]): AwarenessEntry[] {
   }
 
   return normalized;
+}
+
+function normalizeToolTimeline(entries: AwarenessEntry[]): AwarenessEntry[] {
+  return dedupeStandaloneToolCalls(normalizeToolResults(entries));
+}
+
+function dedupeStandaloneToolCalls(entries: AwarenessEntry[]): AwarenessEntry[] {
+  const normalized: AwarenessEntry[] = [];
+  const carriedResults = new Map<string, ToolResultContent[]>();
+
+  for (let index = 0; index < entries.length; index++) {
+    const entry = entries[index];
+    if (!isStandaloneToolCallEntry(entry)) {
+      normalized.push(attachCarriedToolResults(entry, carriedResults.get(entry.id) || []));
+      continue;
+    }
+
+    const calls = (entry.content || []).filter((block): block is ToolCallContent => block.type === 'toolCall');
+    const duplicateIndex = findLaterAssistantWithToolCalls(entries, index + 1, calls);
+    if (duplicateIndex === -1) {
+      normalized.push(entry);
+      continue;
+    }
+
+    const duplicate = entries[duplicateIndex];
+    const priorResults = (entry.content || []).filter((block): block is ToolResultContent => block.type === 'toolResult');
+    if (priorResults.length > 0) {
+      carriedResults.set(duplicate.id, [...(carriedResults.get(duplicate.id) || []), ...priorResults]);
+    }
+  }
+
+  return normalized;
+}
+
+function attachCarriedToolResults(entry: AwarenessEntry, results: ToolResultContent[]): AwarenessEntry {
+  if (results.length === 0) return entry;
+  const content = entry.content || [];
+  const newResults = results.filter((result) => {
+    const resultId = getToolResultId(result);
+    return resultId && !content.some(
+      (block) => block.type === 'toolResult' && getToolResultId(block) === resultId,
+    );
+  });
+  return newResults.length > 0 ? { ...entry, content: [...content, ...newResults] } : entry;
+}
+
+function isStandaloneToolCallEntry(entry: AwarenessEntry): boolean {
+  if (entry.role !== 'assistant' || !Array.isArray(entry.content)) return false;
+  const hasToolCall = entry.content.some((block) => block.type === 'toolCall');
+  if (!hasToolCall) return false;
+  return entry.content.every((block) => block.type === 'toolCall' || block.type === 'toolResult');
+}
+
+function findLaterAssistantWithToolCalls(
+  entries: AwarenessEntry[],
+  startIndex: number,
+  calls: ToolCallContent[],
+): number {
+  const ids = new Set(calls.map((call) => call.id).filter(Boolean));
+  if (ids.size === 0) return -1;
+
+  for (let index = startIndex; index < entries.length; index++) {
+    const entry = entries[index];
+    if (entry.role !== 'assistant' || !entry.content || isStandaloneToolCallEntry(entry)) continue;
+    const laterIds = new Set(entry.content
+      .filter((block): block is ToolCallContent => block.type === 'toolCall')
+      .map((call) => call.id)
+      .filter(Boolean));
+    if ([...ids].every((id) => laterIds.has(id))) return index;
+  }
+  return -1;
 }
 
 function isStandaloneToolResultEntry(entry: AwarenessEntry): boolean {

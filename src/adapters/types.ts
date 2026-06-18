@@ -61,7 +61,14 @@ export interface EmailReplyTarget {
   subject: string;
   inReplyTo?: string;
   references?: string;
+  replyQuote?: EmailReplyQuote;
   toolsToken: string;
+}
+
+export interface EmailReplyQuote {
+  body: string;
+  from?: string;
+  sentAt?: string;
 }
 
 export interface WebhookReplyTarget {

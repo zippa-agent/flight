@@ -103,7 +103,7 @@ export function flueEventToAwarenessEntry(input: {
   }
 
   if (event.type === "message_end" && event.message?.role === "assistant") {
-    const content = normalizeContentBlocks(event.message.content);
+    const content = finalAssistantAwarenessContent(normalizeContentBlocks(event.message.content));
     if (content.length === 0) return null;
     return {
       id: assistantEntryId(event, input.submissionId),
@@ -175,6 +175,10 @@ function normalizeContentBlock(raw: Record<string, unknown>): AwarenessContent[]
   if (typeof raw.content === "string") return [{ type: "text", text: raw.content }];
   if (Array.isArray(raw.content)) return normalizeContentBlocks(raw.content);
   return [];
+}
+
+function finalAssistantAwarenessContent(content: AwarenessContent[]): AwarenessContent[] {
+  return content.filter((block) => block.type !== "toolCall" && block.type !== "toolResult");
 }
 
 function normalizeToolArguments(args: unknown): Record<string, unknown> {
