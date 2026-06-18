@@ -18,6 +18,10 @@ Use `deploy_site` when a website is ready to publish. It deploys files that
 already contain an `index.html` directly. If the workspace contains
 an unbuilt npm/Astro project, `deploy_site` can build it in a temporary TinyFat
 container and deploy the built output.
+Use `set_site_binding` before `deploy_site` when a site needs Cloudflare R2, D1,
+or KV bindings at runtime. Use `upload_site_content` after deployment to place
+content into the site's R2 binding; uploaded content is readable from the site at
+`/__tinyfat/content/<key>`.
 
 Respect delivery semantics. On direct browser chat, normal assistant text is the
 reply. On messages-only channels such as email, Slack, Telegram, Discord, or SMS,

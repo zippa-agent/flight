@@ -1,13 +1,12 @@
 import { defineTool, type ToolDefinition } from "@flue/runtime";
 import * as v from "valibot";
 import type { Env } from "../env";
-import { fetchAgentRuntimeRecord } from "../platform/supabase";
-import { workspaceOwnerIdFromInstanceId, workspaceRootPrefix } from "../sandboxes/r2-workspace";
+import { workspaceRootPrefix } from "../sandboxes/r2-workspace";
 import { buildSiteInContainer, type ContainerBuildInput, type ContainerBuildResult } from "./container-build";
+import { agentToolsToken, cleanSiteMessage, siteApiUrl } from "./site-api";
 
 const MAX_DEPLOY_FILES = 600;
 const MAX_DEPLOY_BYTES = 25 * 1024 * 1024;
-const DEFAULT_SITES_PUBLISH_URL = "https://publish.tinyfat.com/api/sites";
 
 const DeploySiteInput = v.object({
   site: v.pipe(
@@ -57,16 +56,12 @@ export function createDeploySiteTool(input: {
       "Deploy a website from /workspace to TinyFat Sites. If the path is an unbuilt npm/Astro app, this builds it in the configured TinyFat container and deploys the built output. If the path already has index.html, this publishes it directly.",
     parameters: DeploySiteInput,
     execute: async (args, signal) => {
-      const ownerId = workspaceOwnerIdFromInstanceId(input.instanceId);
-      const record = await fetchAgentRuntimeRecord(ownerId, input.env);
-      if (!record?.tools_token) {
-        throw new Error("deploy_site requires the agent tools token.");
-      }
+      const { ownerId, toolsToken } = await agentToolsToken(input);
 
       const result = await deploySiteFromWorkspace({
         env: input.env,
         ownerId,
-        toolsToken: record.tools_token,
+        toolsToken,
         request: args,
         signal,
       });
@@ -272,8 +267,7 @@ function shouldSkipDeployPath(path: string): boolean {
 }
 
 function publishDeployUrl(env: Env, site: string): string {
-  const base = env.SITES_PUBLISH_URL?.trim() || DEFAULT_SITES_PUBLISH_URL;
-  return `${base.replace(/\/+$/u, "")}/${encodeURIComponent(site)}/deploy`;
+  return siteApiUrl(env, site, "deploy");
 }
 
 async function publishSiteTarball(input: {
@@ -304,7 +298,7 @@ async function publishSiteTarball(input: {
 }
 
 function cleanDeployMessage(value: string | undefined): string {
-  return (value || "Flight site deploy").trim().replace(/\s+/g, " ").slice(0, 200) || "Flight site deploy";
+  return cleanSiteMessage(value, "Flight site deploy");
 }
 
 function basename(path: string): string {

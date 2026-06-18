@@ -12,8 +12,12 @@ test("no custom tools are available without a turn payload", () => {
   assert.deepEqual(availableToolNames({ env, turn: null }), []);
 });
 
-test("deploy_site is available when Flight workspace storage is configured", () => {
-  assert.deepEqual(availableToolNames({ env: workspaceEnv, turn: null }), ["deploy_site"]);
+test("site tools are available when Flight workspace storage is configured", () => {
+  assert.deepEqual(availableToolNames({ env: workspaceEnv, turn: null }), [
+    "set_site_binding",
+    "deploy_site",
+    "upload_site_content",
+  ]);
 });
 
 test("messages-only email turns expose send_message", () => {
@@ -37,7 +41,9 @@ test("messages-only email turns expose send_message", () => {
 
   assert.deepEqual(availableToolNames({ env, turn }), ["send_message"]);
   assert.deepEqual(availableToolNames({ env: workspaceEnv, turn }), [
+    "set_site_binding",
     "deploy_site",
+    "upload_site_content",
     "list_channels",
     "read_thread",
     "send_message",

@@ -7,6 +7,8 @@ import { createFullBashTool } from "./full-bash";
 import { createListChannelsTool } from "./list-channels";
 import { createReadThreadTool } from "./read-thread";
 import { createSendMessageTool } from "./send-message";
+import { createSetSiteBindingTool } from "./set-site-binding";
+import { createUploadSiteContentTool } from "./upload-site-content";
 
 export function resolveTurnTools(input: {
   env: Env;
@@ -17,7 +19,15 @@ export function resolveTurnTools(input: {
   const policy = toolPolicyForTurn(input.turn);
 
   if (input.env.FLIGHT_WORKSPACE) {
+    tools.push(createSetSiteBindingTool({
+      env: input.env,
+      instanceId: input.instanceId,
+    }));
     tools.push(createDeploySiteTool({
+      env: input.env,
+      instanceId: input.instanceId,
+    }));
+    tools.push(createUploadSiteContentTool({
       env: input.env,
       instanceId: input.instanceId,
     }));
@@ -57,7 +67,9 @@ export function availableToolNames(input: {
 }): string[] {
   const policy = toolPolicyForTurn(input.turn);
   return [
+    input.env.FLIGHT_WORKSPACE ? "set_site_binding" : null,
     input.env.FLIGHT_WORKSPACE ? "deploy_site" : null,
+    input.env.FLIGHT_WORKSPACE ? "upload_site_content" : null,
     input.env.FLIGHT_WORKSPACE && input.turn?.event.adapter === "email" && policy.allowSendMessage
       ? "list_channels"
       : null,
