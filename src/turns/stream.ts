@@ -201,6 +201,7 @@ function toolLabel(name: string, args: unknown): string {
   const record = normalizeToolArguments(args);
   if (typeof record.label === "string" && record.label.trim()) return record.label.trim();
   if (name === "send_message") return "Send message";
+  if (name === "deploy_site") return "Deploy site";
   if (name === "full_bash") return "Full bash";
   if (name === "bash" || name === "shell") return "Light bash";
   return name.replace(/^functions\./, "").replace(/[_-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());

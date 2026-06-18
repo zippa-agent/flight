@@ -6,9 +6,14 @@ import type { Env } from "../src/env";
 import type { FlightTurnPayload } from "../src/adapters/types";
 
 const env: Env = {};
+const workspaceEnv: Env = { FLIGHT_WORKSPACE: {} as R2Bucket };
 
 test("no custom tools are available without a turn payload", () => {
   assert.deepEqual(availableToolNames({ env, turn: null }), []);
+});
+
+test("deploy_site is available when Flight workspace storage is configured", () => {
+  assert.deepEqual(availableToolNames({ env: workspaceEnv, turn: null }), ["deploy_site"]);
 });
 
 test("messages-only email turns expose send_message", () => {
@@ -31,6 +36,7 @@ test("messages-only email turns expose send_message", () => {
   };
 
   assert.deepEqual(availableToolNames({ env, turn }), ["send_message"]);
+  assert.deepEqual(availableToolNames({ env: workspaceEnv, turn }), ["deploy_site", "send_message"]);
 });
 
 test("full_bash requires both policy and Crawdad credentials", () => {

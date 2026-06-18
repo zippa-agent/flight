@@ -27,7 +27,8 @@
     "CRAWDAD_API_BASE": "https://crawdad.tinyfat.com",
     "TINYFAT_MODEL": "fireworks/accounts/fireworks/models/minimax-m2p7",
     "TINYFAT_FIREWORKS_BASE_URL": "https://tinyfat.com/api/fireworks",
-    "TINYFAT_EMAIL_SEND_URL": "https://tinyfat.com/api/email/send"
+    "TINYFAT_EMAIL_SEND_URL": "https://tinyfat.com/api/email/send",
+    "SITES_PUBLISH_URL": "https://publish.tinyfat.com/api/sites"
   },
   "r2_buckets": [
     {

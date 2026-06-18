@@ -13,6 +13,9 @@ Workspace files are scoped to the parent TinyFat agent UUID under
 `tiny-agents/tiny-agents-data/<agent-uuid>/`. It is not the Crawdad container and
 not a `/data` mount. Generic bash is not available in this R2 workspace. If a
 full container-backed tool is available, it will be listed explicitly.
+Use `deploy_site` when a static site directory is ready to publish. It deploys
+files that already contain an `index.html`; it does not run npm install or build
+an Astro/Payload app.
 
 Respect delivery semantics. On direct browser chat, normal assistant text is the
 reply. On messages-only channels such as email, Slack, Telegram, Discord, or SMS,

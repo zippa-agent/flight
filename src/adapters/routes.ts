@@ -4,7 +4,7 @@ import { normalizeEmailEvent, type EmailPayload } from "./email";
 import { normalizeFlightEvent } from "./flight";
 import { fetchAgentRuntimeRecord } from "../platform/supabase";
 import { jsonError, requireBearer } from "../shared/http";
-import { dispatchTurn } from "../turns/submit";
+import { submitDetachedTurn } from "../turns/submit";
 import { isRecord } from "./types";
 
 type AppContext = Context<{ Bindings: Env }>;
@@ -35,7 +35,7 @@ export async function handleEmailWebhook(c: AppContext): Promise<Response> {
       payload,
       toolsToken: record.tools_token,
     });
-    const receipt = await dispatchTurn(c.env, event);
+    const receipt = await submitDetachedTurn(c, event);
     return c.json({
       ok: true,
       runtime: "flight",
@@ -69,7 +69,7 @@ export async function handleFlightWebhook(c: AppContext): Promise<Response> {
 
   try {
     const event = normalizeFlightEvent(body, { agentId });
-    const receipt = await dispatchTurn(c.env, event, {
+    const receipt = await submitDetachedTurn(c, event, {
       allowFullBash: requestedFullBash(body),
     });
     return c.json({

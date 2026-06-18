@@ -11,6 +11,7 @@ import { requireBearer } from "../shared/http";
 import { parseFlightTurnPayload } from "../adapters/types";
 import { r2Workspace, workspaceOwnerIdFromInstanceId } from "../sandboxes/r2-workspace";
 import { resolveTurnTools } from "../tools/registry";
+import { resolveTurnContext } from "../turns/context";
 import baseInstructions from "./tinyfat.md" with { type: "markdown" };
 
 export const description = "TinyFat Flight scoped relationship agent.";
@@ -44,7 +45,8 @@ const responseReviewer = defineAgentProfile({
 });
 
 export default createAgent<unknown, Env>(async ({ id, env, payload }) => {
-  const turn = parseFlightTurnPayload(payload);
+  const turn = await resolveTurnContext({ env, instanceId: id, payload })
+    || parseFlightTurnPayload(payload);
   const policy = toolPolicyForTurn(turn);
   if (!env.FLIGHT_WORKSPACE) {
     throw new Error("Flight requires the FLIGHT_WORKSPACE R2 bucket binding.");

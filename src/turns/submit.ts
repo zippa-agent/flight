@@ -1,6 +1,4 @@
-import { dispatch } from "@flue/runtime";
 import type { Context } from "hono";
-import tinyfatAgent from "../agents/tinyfat";
 import type { FlightTurnPayload, InboundEvent } from "../adapters/types";
 import { flightInstanceId } from "../awareness/id";
 import {
@@ -11,6 +9,7 @@ import {
 } from "../awareness/store";
 import type { Env } from "../env";
 import { buildTurnPrompt } from "../agent/prompt";
+import { promptWithTurnContext, storeTurnContext } from "./context";
 import { postDirectPrompt, readAgentStream, sseHeaders } from "./flue-client";
 import { flueEventToAwarenessEntry, flueEventToUiEvents, isTerminalFlueEvent, terminalUiEvent } from "./stream";
 
@@ -29,7 +28,7 @@ export async function submitDirectWebTurn(
   const awarenessTail = await fetchAwarenessEntries(c.env, instanceId, { limit: 60 }).then((page) => page.entries);
   await appendInbound(c.env, instanceId, event);
   const turn = buildTurnPayload(event, awarenessTail, options);
-  const admission = await postDirectPrompt(c, instanceId, turn.prompt);
+  const admission = await admitDirectTurn(c, instanceId, turn);
 
   return new Response(new ReadableStream<Uint8Array>({
     start(controller) {
@@ -81,20 +80,67 @@ export async function submitDirectWebTurn(
   }), { headers: sseHeaders() });
 }
 
-export async function dispatchTurn(
-  env: Env,
+export async function submitDetachedTurn(
+  c: AppContext,
   event: InboundEvent,
   options: SubmitOptions = {},
-): Promise<{ dispatchId: string; acceptedAt: string; instanceId: string }> {
+): Promise<{ submissionId: string; streamUrl: string; offset: string; acceptedAt: string; instanceId: string }> {
   const instanceId = flightInstanceId(event);
-  const awarenessTail = await fetchAwarenessEntries(env, instanceId, { limit: 60 }).then((page) => page.entries);
-  await appendInbound(env, instanceId, event);
+  const awarenessTail = await fetchAwarenessEntries(c.env, instanceId, { limit: 60 }).then((page) => page.entries);
+  await appendInbound(c.env, instanceId, event);
   const turn = buildTurnPayload(event, awarenessTail, options);
-  const receipt = await dispatch(tinyfatAgent, {
-    id: instanceId,
-    input: turn,
+  const admission = await admitDirectTurn(c, instanceId, turn);
+
+  c.executionCtx.waitUntil(mirrorTurnStreamToAwareness(c, event, admission).catch((error) => {
+    console.warn("Flight detached turn stream mirror failed:", error);
+  }));
+
+  return {
+    ...admission,
+    acceptedAt: new Date().toISOString(),
+    instanceId,
+  };
+}
+
+async function admitDirectTurn(
+  c: AppContext,
+  instanceId: string,
+  turn: FlightTurnPayload,
+) {
+  const contextId = await storeTurnContext({ env: c.env, instanceId, turn });
+  return postDirectPrompt(c, instanceId, promptWithTurnContext({
+    contextId,
+    prompt: turn.prompt,
+  }));
+}
+
+async function mirrorTurnStreamToAwareness(
+  c: AppContext,
+  event: InboundEvent,
+  admission: { streamUrl: string; offset: string; submissionId: string },
+): Promise<void> {
+  const instanceId = flightInstanceId(event);
+  await readAgentStream(c, admission, async (events) => {
+    let completed = false;
+    for (const flueEvent of events) {
+      if (flueEvent?.submissionId && flueEvent.submissionId !== admission.submissionId) continue;
+
+      const entry = flueEventToAwarenessEntry({
+        event: flueEvent,
+        adapter: event.adapter,
+        channel: event.scope.channelId || event.scope.id,
+        submissionId: admission.submissionId,
+      });
+      if (entry) {
+        await appendAwarenessEntry(c.env, instanceId, entry).catch((error) => {
+          console.warn("Flight awareness append failed:", error);
+        });
+      }
+
+      if (isTerminalFlueEvent(flueEvent)) completed = true;
+    }
+    return completed;
   });
-  return { ...receipt, instanceId };
 }
 
 function buildTurnPayload(
