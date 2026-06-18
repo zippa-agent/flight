@@ -22,7 +22,9 @@ Verification:
 
 Deploy:
 
-- Pending at log creation; deploy this commit with `npm run deploy` after push.
+- Deployed to Cloudflare with `npm run deploy`.
+- Worker version: `ff8f6e55-88ef-4d74-b733-cbe2f72492ec`.
+- Routes: `https://flight.alexgarcia042.workers.dev`, `flight.tinyfat.com`.
 
 Manual QA Gaps:
 
