@@ -51,6 +51,7 @@ export function contractText(policy: ToolPolicy, input: RuntimeContractInput = {
       ? "- Delivery: direct browser surfaces receive ordinary assistant text. This messages-only turn has send_message for user-visible delivery."
       : "- Delivery: direct browser surfaces receive ordinary assistant text. No external provider delivery tool is registered for this turn.",
     "- Skills and autonomous lifecycle: not present in this beta runtime unless an explicit tool makes them available.",
+    "- Tool labels: every tool call must include a required label argument with a concise user-facing one-sentence description of what the tool call is doing. Flight rejects tool calls that omit this label.",
     "- Tool honesty: do not mention or pretend to use a tool that is listed as unavailable.",
     "",
     "Available capability details:",

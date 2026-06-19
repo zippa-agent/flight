@@ -28,6 +28,7 @@ export interface ToolCallContent {
   type: 'toolCall';
   id: string;
   name: string;
+  label?: string;
   arguments: Record<string, unknown>;
   contentIndex?: number;
 }
@@ -256,11 +257,14 @@ function normalizeContentBlock(block: unknown): ContentBlock | null {
   }
   if (raw.type === 'toolCall' || raw.type === 'tool_call' || raw.type === 'tool_use') {
     const rawArgs = raw.arguments ?? raw.args ?? raw.input;
+    const args = isRecord(rawArgs) ? rawArgs : {};
+    const label = cleanToolCallLabel(raw.label) || cleanToolCallLabel(args.label);
     return {
       type: 'toolCall',
       id: String(raw.id ?? raw.toolCallId ?? raw.tool_call_id ?? raw.toolUseId ?? raw.tool_use_id ?? ''),
       name: String(raw.name ?? raw.toolName ?? raw.tool_name ?? 'tool'),
-      arguments: isRecord(rawArgs) ? rawArgs : {},
+      ...(label ? { label } : {}),
+      arguments: args,
     };
   }
   if (raw.type === 'toolResult' || raw.type === 'tool_result') {
@@ -292,6 +296,11 @@ function normalizeToolOutputStream(value: unknown): ToolOutputContent['stream'] 
 
 function normalizeRealtimeOutputPhase(value: unknown): RealtimeOutputPhase | undefined {
   return value === 'commentary' || value === 'final_answer' ? value : undefined;
+}
+
+function cleanToolCallLabel(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  return value.replace(/\s+/gu, ' ').trim();
 }
 
 function normalizeDiagnosticLevel(value: unknown): 'info' | 'warning' | 'error' {

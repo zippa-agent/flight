@@ -16,14 +16,16 @@ test("Flue tool events expose labeled tool calls and results", () => {
     type: "tool_start",
     toolCallId: "call-1",
     toolName: "full_bash",
-    args: { command: "pwd" },
+    label: "Check the current workspace directory.",
+    args: { command: "pwd", label: "Check the current workspace directory." },
   }), [{
     type: "toolcall_start",
     toolCall: {
       type: "toolCall",
       id: "call-1",
       name: "full_bash",
-      arguments: { command: "pwd", label: "Full bash" },
+      label: "Check the current workspace directory.",
+      arguments: { command: "pwd", label: "Check the current workspace directory." },
     },
   }]);
 
@@ -37,6 +39,36 @@ test("Flue tool events expose labeled tool calls and results", () => {
     result: "ok",
     isError: false,
   }]);
+});
+
+test("Flue tool labels are stored as top-level awareness fields", () => {
+  const entry = flueEventToAwarenessEntry({
+    adapter: "web",
+    channel: "web",
+    submissionId: "sub-1",
+    event: {
+      type: "tool_start",
+      timestamp: "2026-06-19T15:00:00.000Z",
+      toolCallId: "call-1",
+      toolName: "browser_content",
+      args: {
+        label: "Verify the uploaded public content marker.",
+        url: "https://main-floopy-payload-live.tinyfat.dev/__tinyfat/content/qa/file.txt",
+      },
+    },
+  });
+
+  assert.equal(entry?.content?.[0]?.type, "toolCall");
+  assert.deepEqual(entry?.content?.[0], {
+    type: "toolCall",
+    id: "call-1",
+    name: "browser_content",
+    label: "Verify the uploaded public content marker.",
+    arguments: {
+      label: "Verify the uploaded public content marker.",
+      url: "https://main-floopy-payload-live.tinyfat.dev/__tinyfat/content/qa/file.txt",
+    },
+  });
 });
 
 test("Flue tool result text is bounded before UI and awareness storage", () => {

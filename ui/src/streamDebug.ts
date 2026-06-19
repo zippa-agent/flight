@@ -55,6 +55,7 @@ export function summarizeToolCall(raw: unknown): Record<string, unknown> {
     type: toolCall.type,
     id: preview(toolCall.id, 80),
     name: preview(toolCall.name, 80),
+    label: preview(toolCall.label, 80),
     contentIndex: toolCall.contentIndex,
     isPartial: toolCall.isPartial,
     argKeys: args ? Object.keys(args) : [],

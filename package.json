@@ -9,12 +9,13 @@
     "url": "https://github.com/tinyfatco/flight.git"
   },
   "scripts": {
-    "build": "npm run build:ui && flue build --target cloudflare",
+    "postinstall": "node scripts/patch-flue-tool-labels.mjs",
+    "build": "node scripts/patch-flue-tool-labels.mjs && npm run build:ui && flue build --target cloudflare",
     "build:ui": "vite build --config ui/vite.config.ts && node scripts/build-ui-assets.mjs",
     "deploy": "wrangler deploy --config dist/flight/wrangler.json",
-    "dev": "flue dev --target cloudflare",
-    "test": "tsx --test test/**/*.test.ts",
-    "typecheck": "tsc --noEmit && tsc -p ui/tsconfig.json --noEmit"
+    "dev": "node scripts/patch-flue-tool-labels.mjs && flue dev --target cloudflare",
+    "test": "node scripts/patch-flue-tool-labels.mjs && tsx --test test/**/*.test.ts",
+    "typecheck": "node scripts/patch-flue-tool-labels.mjs && tsc --noEmit && tsc -p ui/tsconfig.json --noEmit"
   },
   "dependencies": {
     "@flue/runtime": "1.0.0-beta.1",

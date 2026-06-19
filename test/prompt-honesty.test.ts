@@ -24,6 +24,7 @@ test("web prompt does not name unavailable delivery or full container tools", ()
   assert.doesNotMatch(text, /does not yet load/i);
   assert.match(text, /durable R2-backed workspace/i);
   assert.match(text, /loads available \/workspace BOOTSTRAP/);
+  assert.match(text, /every tool call must include a required label argument/i);
   assert.match(text, /tiny-agents-data\/<agent-uuid>/);
   assert.match(text, /Generic bash: unavailable/);
   assert.match(text, /not a \/data/);

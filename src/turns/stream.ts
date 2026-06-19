@@ -65,6 +65,9 @@ export function flueEventToAwarenessEntry(input: {
 
   if (event.type === "tool_start") {
     const toolCallId = String(event.toolCallId || crypto.randomUUID());
+    const name = String(event.toolName || "tool");
+    const args = normalizeToolArguments(event.args);
+    const label = toolCallLabel(event, args);
     return {
       id: `tool-call-${stableIdPart(input.submissionId)}-${stableIdPart(toolCallId)}`,
       type: "tool_call",
@@ -76,9 +79,9 @@ export function flueEventToAwarenessEntry(input: {
       content: [{
         type: "toolCall",
         id: toolCallId,
-        name: String(event.toolName || "tool"),
-        arguments: withToolLabel(String(event.toolName || "tool"), event.args),
-        label: toolLabel(String(event.toolName || "tool"), event.args),
+        name,
+        arguments: args,
+        ...(label ? { label } : {}),
       }],
     };
   }
@@ -122,21 +125,18 @@ export function flueEventToAwarenessEntry(input: {
 
 function toolCallEvent(type: "toolcall_start" | "toolcall_delta" | "toolcall_end", event: any): unknown {
   const name = String(event.toolName || event.name || "tool");
+  const args = normalizeToolArguments(event.args);
+  const label = toolCallLabel(event, args);
   return {
     type,
     toolCall: {
       type: "toolCall",
       id: String(event.toolCallId || event.id || crypto.randomUUID()),
       name,
-      arguments: withToolLabel(name, event.args),
+      ...(label ? { label } : {}),
+      arguments: args,
     },
   };
-}
-
-function withToolLabel(name: string, args: unknown): Record<string, unknown> {
-  const normalized = normalizeToolArguments(args);
-  const label = toolLabel(name, normalized);
-  return label ? { ...normalized, label } : normalized;
 }
 
 function assistantEntryId(event: any, submissionId: string): string {
@@ -162,13 +162,16 @@ function normalizeContentBlock(raw: Record<string, unknown>): AwarenessContent[]
   if (raw.type === "thinking") return [{ type: "thinking", thinking: String(raw.thinking || "") }];
   if (raw.type === "toolCall" || raw.type === "tool_call" || raw.type === "tool_use") {
     const rawArgs = raw.arguments ?? raw.args ?? raw.input;
+    const args = rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs)
+      ? rawArgs as Record<string, unknown>
+      : {};
+    const label = cleanToolCallLabel(raw.label) || cleanToolCallLabel(args.label);
     return [{
       type: "toolCall",
       id: String(raw.id ?? raw.toolCallId ?? raw.tool_call_id ?? raw.toolUseId ?? raw.tool_use_id ?? ""),
       name: String(raw.name ?? raw.toolName ?? raw.tool_name ?? "tool"),
-      arguments: rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs)
-        ? rawArgs as Record<string, unknown>
-        : {},
+      arguments: args,
+      ...(label ? { label } : {}),
     }];
   }
   if (typeof raw.text === "string") return [{ type: "text", text: raw.text }];
@@ -208,14 +211,16 @@ function clipText(value: string, maxChars: number): string {
   return `${value.slice(0, maxChars)}\n[truncated ${value.length - maxChars} chars]`;
 }
 
-function toolLabel(name: string, args: unknown): string {
-  const record = normalizeToolArguments(args);
-  if (typeof record.label === "string" && record.label.trim()) return record.label.trim();
-  if (name === "send_message") return "Send message";
-  if (name === "deploy_site") return "Deploy site";
-  if (name === "full_bash") return "Full bash";
-  if (name === "bash" || name === "shell") return "Light bash";
-  return name.replace(/^functions\./, "").replace(/[_-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+function toolCallLabel(event: Record<string, unknown>, args: Record<string, unknown>): string {
+  return cleanToolCallLabel(event.label)
+    || cleanToolCallLabel(event.toolLabel)
+    || cleanToolCallLabel((event.toolCall as { label?: unknown } | undefined)?.label)
+    || cleanToolCallLabel(args.label);
+}
+
+function cleanToolCallLabel(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.replace(/\s+/gu, " ").trim();
 }
 
 function errorMessage(error: unknown): string {
