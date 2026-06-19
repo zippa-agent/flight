@@ -19,8 +19,9 @@ listener read-state sidecar, read/unread display in `list_channels`, optional
 
 ## Deploy Status
 
-Flight build succeeded locally. Deploy/push still pending at the time this note
-was written.
+Pushed to `origin/main` and deployed to `flight.tinyfat.com`.
+
+- Flight Worker version: `0631da20-e5cd-4a26-9666-dd088c8974ac`
 
 ## Manual QA Gaps
 
