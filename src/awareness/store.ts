@@ -38,6 +38,7 @@ export function userAwarenessEntry(input: {
   userName: string;
   text: string;
   deliveryId?: string;
+  modelText?: string;
 }): AwarenessEntry {
   return {
     id: input.id,
@@ -49,6 +50,9 @@ export function userAwarenessEntry(input: {
     userName: input.userName,
     deliveryId: input.deliveryId,
     content: [{ type: "text", text: input.text }],
+    data: input.modelText && input.modelText !== input.text
+      ? { modelText: input.modelText }
+      : undefined,
   };
 }
 

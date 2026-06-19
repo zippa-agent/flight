@@ -3,6 +3,7 @@ import type { FlightTurnPayload } from "../adapters/types";
 export interface ToolPolicy {
   allowSendMessage: boolean;
   allowFullBash: boolean;
+  allowYieldNoAction?: boolean;
 }
 
 export interface RuntimeContractInput {
@@ -13,6 +14,7 @@ export function toolPolicyForTurn(turn: FlightTurnPayload | null): ToolPolicy {
   return {
     allowSendMessage: turn?.event.deliveryMode === "messages-only" && !!turn.event.replyTarget,
     allowFullBash: Boolean(turn?.toolPolicy.allowFullBash),
+    allowYieldNoAction: Boolean(turn?.toolPolicy.allowYieldNoAction),
   };
 }
 
@@ -40,6 +42,9 @@ export function contractText(policy: ToolPolicy, input: RuntimeContractInput = {
   }
   if (available.has("read_thread")) {
     tools.push("read_thread: available for reading a known email-thread:<id>, slack:<channel_id>:<thread_ts>, or slack:<channel_id> target before choosing where to send a reply.");
+  }
+  if (policy.allowYieldNoAction && available.has("yield_no_action")) {
+    tools.push("yield_no_action: available for ambient or passive turns only. Use it when you were not directly addressed and have nothing useful to add; it records a quiet no-op without sending a user-visible message.");
   }
 
   tools.push(policy.allowSendMessage && available.has("send_message")

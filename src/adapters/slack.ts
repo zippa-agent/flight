@@ -12,6 +12,7 @@ export interface SlackBridgePayload {
   botUserId?: string;
   teamId?: string;
   channelNames?: Record<string, string>;
+  userNames?: Record<string, string>;
   event?: SlackEventInner;
 }
 
@@ -110,6 +111,7 @@ export function normalizeSlackEvent(input: {
   });
   const channelName = input.payload.channelNames?.[channel];
   const userId = event.user || event.bot_id || "unknown";
+  const userName = input.payload.userNames?.[userId];
   const sourceEventType = isDm
     ? "slack_dm"
     : event.type === "app_mention"
@@ -121,6 +123,7 @@ export function normalizeSlackEvent(input: {
     threadTs,
     messageTs: event.ts,
     userId,
+    userName,
     text,
     rawText,
     directlyAddressed,
@@ -140,7 +143,7 @@ export function normalizeSlackEvent(input: {
         id: "web",
         parentAgentId: input.agentId,
         provider: "slack",
-        channelId: `slack:${channel}`,
+        channelId: `slack:${slackChannelDisplayLabel(channel, channelName)}`,
         threadId,
         label: channelName ? `#${channelName}` : `Slack ${channel}`,
         instructions: [
@@ -160,14 +163,28 @@ export function normalizeSlackEvent(input: {
       actor: {
         id: userId,
         username: userId,
-        displayName: userId,
+        displayName: userName || userId,
       },
       message: {
-        text: buildSlackMessageText(event, normalized),
+        text: normalized.directlyAddressed
+          ? buildSlackDisplayMessageText(event, normalized)
+          : buildSlackAmbientMessageText([normalized], {
+            temperature: 1,
+            recentParticipants: 1,
+            timeSinceMyLastMs: Infinity,
+          }),
+        modelText: normalized.directlyAddressed
+          ? buildSlackModelMessageText(event, normalized)
+          : buildSlackAmbientMessageText([normalized], {
+            temperature: 1,
+            recentParticipants: 1,
+            timeSinceMyLastMs: Infinity,
+          }),
       },
       replyTarget: {
         kind: "slack",
         channel,
+        channelName,
         threadTs,
         botToken,
         botUserId: input.payload.botUserId,
@@ -198,23 +215,72 @@ export function normalizeSlackEvent(input: {
   };
 }
 
-function buildSlackMessageText(event: SlackEventInner, normalized: NormalizedSlackEvent): string {
+function slackChannelDisplayLabel(channel: string, channelName?: string): string {
+  return channelName ? `#${channelName}` : channel;
+}
+
+function buildSlackDisplayMessageText(event: SlackEventInner, normalized: NormalizedSlackEvent): string {
+  const parts: string[] = [];
+  const messageText = normalized.text || normalized.rawText || "";
+  if (messageText.trim()) parts.push(messageText.trim());
+  appendSlackFileDisplay(parts, event);
+  return parts.join("\n").trim() || "(no text)";
+}
+
+function buildSlackModelMessageText(event: SlackEventInner, normalized: NormalizedSlackEvent): string {
   const parts = [
     `Slack channel: ${normalized.channelName ? `#${normalized.channelName}` : normalized.channel}`,
     `Slack user: ${normalized.userName || normalized.userId}`,
     normalized.threadTs ? `Slack thread target: ${slackThreadTarget(normalized.channel, normalized.threadTs)}` : `Slack target: ${slackThreadTarget(normalized.channel)}`,
     normalized.directlyAddressed ? "Addressing: direct" : "Addressing: ambient",
   ];
-  if (event.files?.length) {
-    parts.push("Files:");
-    for (const file of event.files) {
-      const details = [
-        file.mimetype,
-        file.filetype,
-      ].filter(Boolean).join(", ");
-      parts.push(`- ${file.title || file.name || file.id || "Slack file"}${details ? ` (${details})` : ""}`);
-    }
-  }
+  appendSlackFileDisplay(parts, event);
   parts.push("", normalized.text || normalized.rawText || "(no text)");
   return parts.join("\n");
+}
+
+function buildSlackAmbientMessageText(
+  messages: NormalizedSlackEvent[],
+  summary: {
+    temperature: number;
+    recentParticipants: number;
+    timeSinceMyLastMs: number;
+  },
+): string {
+  const first = messages[0];
+  const channelLabel = first?.channelName ? `#${first.channelName}` : `Slack ${first?.channel || "channel"}`;
+  const messageLines = messages.map((message) => {
+    const who = message.userName
+      ? `${message.userName} (${message.userId})`
+      : message.userId;
+    const target = message.threadTs
+      ? ` [Reply target: ${slackThreadTarget(message.channel, message.threadTs)}; message_ts: ${message.messageTs}; thread_ts: ${message.threadTs}]`
+      : ` [Reply target: ${slackThreadTarget(message.channel)}; message_ts: ${message.messageTs}]`;
+    return `${who}${target}: ${message.text || message.rawText || "(no text)"}`;
+  }).join("\n");
+  const lastSpoke = summary.timeSinceMyLastMs === Infinity
+    ? "never"
+    : `${Math.round(summary.timeSinceMyLastMs / 1000)}s ago`;
+
+  return [
+    `[AMBIENT] A conversation is happening in ${channelLabel}. New unseen messages since your last ambient wake:`,
+    "",
+    messageLines,
+    "",
+    `Channel pulse: ${summary.temperature} messages in last 15min, ${summary.recentParticipants} participants, you last spoke ${lastSpoke}.`,
+    "",
+    "You're observing this conversation naturally. You were not directly addressed. If you choose to respond to a specific Slack thread, use that message's exact Reply target with send_message. Keep it brief and conversational. If you have nothing to add, use the yield_no_action tool.",
+  ].join("\n");
+}
+
+function appendSlackFileDisplay(parts: string[], event: SlackEventInner): void {
+  if (!event.files?.length) return;
+  parts.push("Files:");
+  for (const file of event.files) {
+    const details = [
+      file.mimetype,
+      file.filetype,
+    ].filter(Boolean).join(", ");
+    parts.push(`- ${file.title || file.name || file.id || "Slack file"}${details ? ` (${details})` : ""}`);
+  }
 }

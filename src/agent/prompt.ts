@@ -59,7 +59,7 @@ export function buildTurnPrompt(input: {
     renderAwarenessTail(input.awarenessTail),
     "",
     "Current inbound message:",
-    input.event.message.text,
+    input.event.message.modelText || input.event.message.text,
   ].filter((line) => line !== "").join("\n");
 }
 

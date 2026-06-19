@@ -90,6 +90,7 @@ export function createSendMessageTool(input: {
           type: "outbound",
           at: timestamp,
           channelId: result.channel || target.channel,
+          channelName: target.channelName,
           threadTs: target.threadTs,
           messageTs: result.ts,
           userId: target.botUserId || "agent",
@@ -103,7 +104,7 @@ export function createSendMessageTool(input: {
           id: `delivery-${input.turn.event.delivery.id}-${result.ts || crypto.randomUUID()}`,
           timestamp,
           adapter: input.turn.event.adapter,
-          channel: `slack:${result.channel || target.channel}`,
+          channel: input.turn.event.scope.channelId || `slack:${target.channelName ? `#${target.channelName}` : result.channel || target.channel}`,
           text: body,
           content: [{ type: "text", text: body }],
         })).catch((error) => {
@@ -234,6 +235,7 @@ function resolveSlackTarget(
   return {
     kind: "slack",
     channel: parsed.channel,
+    channelName: activeTarget.channelName,
     threadTs: parsed.threadTs,
     botToken: activeTarget.botToken,
     botUserId: activeTarget.botUserId,

@@ -10,6 +10,7 @@ import { createReadThreadTool } from "./read-thread";
 import { createSendMessageTool } from "./send-message";
 import { createSetSiteBindingTool } from "./set-site-binding";
 import { createUploadSiteContentTool } from "./upload-site-content";
+import { createYieldNoActionTool } from "./yield-no-action";
 
 export function resolveTurnTools(input: {
   env: Env;
@@ -59,6 +60,10 @@ export function resolveTurnTools(input: {
     }));
   }
 
+  if (input.turn && policy.allowYieldNoAction) {
+    tools.push(createYieldNoActionTool());
+  }
+
   if (policy.allowFullBash && input.env.CRAWDAD_API_BASE && input.env.CRAWDAD_API_TOKEN) {
     tools.push(createFullBashTool({
       env: input.env,
@@ -86,6 +91,7 @@ export function availableToolNames(input: {
       ? "read_thread"
       : null,
     policy.allowSendMessage ? "send_message" : null,
+    policy.allowYieldNoAction ? "yield_no_action" : null,
     policy.allowFullBash && input.env.CRAWDAD_API_BASE && input.env.CRAWDAD_API_TOKEN ? "full_bash" : null,
   ].filter((name): name is string => !!name);
 }

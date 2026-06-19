@@ -62,6 +62,8 @@ export interface AwarenessEntry {
   userName?: string;
   /** The actual message text with the prefix stripped */
   strippedText?: string;
+  /** Hidden model-only context shown through an explicit details expander. */
+  modelText?: string;
   /** Model info for assistant messages */
   model?: string;
   stopReason?: string;
@@ -222,10 +224,19 @@ function parseFlightAwarenessEntry(raw: unknown): AwarenessEntry | null {
     channel: typeof raw.channel === 'string' ? raw.channel : undefined,
     userName: typeof raw.userName === 'string' ? raw.userName : undefined,
   };
+  if (isRecord(raw.data) && typeof raw.data.modelText === 'string') {
+    entry.modelText = raw.data.modelText;
+  }
 
   if (role === 'user') {
     const textBlock = content.find((block): block is TextContent => block.type === 'text');
-    if (textBlock) entry.strippedText = stripModelContextBlocks(textBlock.text).trim();
+    if (textBlock) {
+      entry.strippedText = stripModelContextBlocks(textBlock.text).trim();
+      if (entry.strippedText.startsWith('[AMBIENT]')) {
+        entry.isAmbient = true;
+        entry.userName = 'system';
+      }
+    }
   }
 
   return entry;

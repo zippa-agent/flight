@@ -44,7 +44,10 @@ export interface InboundActor {
 }
 
 export interface InboundMessage {
+  /** User-visible message text rendered in awareness/UI. */
   text: string;
+  /** Model-only turn text when adapters need to include delivery context. */
+  modelText?: string;
   subject?: string;
 }
 
@@ -78,6 +81,7 @@ export interface EmailReplyQuote {
 export interface SlackReplyTarget {
   kind: "slack";
   channel: string;
+  channelName?: string;
   threadTs?: string;
   botToken: string;
   botUserId?: string;
@@ -115,6 +119,7 @@ export interface FlightTurnPayload {
   toolPolicy: {
     allowSendMessage: boolean;
     allowFullBash: boolean;
+    allowYieldNoAction?: boolean;
   };
 }
 

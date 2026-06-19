@@ -224,6 +224,7 @@ function buildTurnPayload(
   const toolPolicy = {
     allowSendMessage: event.deliveryMode === "messages-only" && !!event.replyTarget,
     allowFullBash: Boolean(options.allowFullBash),
+    allowYieldNoAction: event.context?.slackDirectlyAddressed === false,
   };
   const prompt = buildTurnPrompt({ event, awarenessTail });
   return {
@@ -266,6 +267,7 @@ async function appendInbound(env: Env, instanceId: string, event: InboundEvent):
     channel: event.scope.channelId || event.scope.id,
     userName: event.actor.displayName || event.actor.email || event.actor.id,
     text: event.message.text,
+    modelText: event.message.modelText,
     deliveryId: event.delivery.id,
   });
   await appendAwarenessEntry(env, instanceId, entry);

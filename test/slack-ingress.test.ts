@@ -98,6 +98,66 @@ test("slack channel message duplicate for app mention is skipped", () => {
   assert.match(result.reason, /duplicate/u);
 });
 
+test("slack app mentions keep UI text clean while preserving model context", () => {
+  const result = normalizeSlackEvent({
+    agentId,
+    payload: {
+      type: "event_callback",
+      event_id: "EvMention123",
+      botToken: "xoxb-test",
+      botUserId: "UAGENT",
+      channelNames: { C123ABC: "social" },
+      userNames: { UUSER: "alex" },
+      event: {
+        type: "app_mention",
+        channel: "C123ABC",
+        channel_type: "channel",
+        user: "UUSER",
+        text: "<@UAGENT> Pretty sweet.",
+        ts: "1710000000.123456",
+      },
+    },
+  });
+
+  assert.equal(result.status, "accepted");
+  if (result.status !== "accepted") throw new Error("expected accepted");
+  assert.equal(result.event.scope.channelId, "slack:#social");
+  assert.equal(result.event.actor.displayName, "alex");
+  assert.equal(result.event.message.text, "Pretty sweet.");
+  assert.match(result.event.message.modelText || "", /Slack channel: #social/u);
+  assert.match(result.event.message.modelText || "", /Slack user: alex/u);
+  assert.match(result.event.message.modelText || "", /Slack thread target: slack:C123ABC:1710000000\.123456/u);
+});
+
+test("slack ambient messages render as compact ambient entries and allow yielding", () => {
+  const result = normalizeSlackEvent({
+    agentId,
+    payload: {
+      type: "event_callback",
+      event_id: "EvAmbient123",
+      botToken: "xoxb-test",
+      botUserId: "UAGENT",
+      channelNames: { C123ABC: "social" },
+      userNames: { UUSER: "alex" },
+      event: {
+        type: "message",
+        channel: "C123ABC",
+        channel_type: "channel",
+        user: "UUSER",
+        text: "Pretty sweet.",
+        ts: "1710000000.123456",
+      },
+    },
+  });
+
+  assert.equal(result.status, "accepted");
+  if (result.status !== "accepted") throw new Error("expected accepted");
+  assert.equal(result.slackEvent.directlyAddressed, false);
+  assert.match(result.event.message.text, /^\[AMBIENT\]/u);
+  assert.match(result.event.message.text, /alex \(UUSER\).*Pretty sweet\./u);
+  assert.equal(result.event.context?.slackDirectlyAddressed, false);
+});
+
 test("send_message posts Slack replies to explicit thread targets", async () => {
   const priorFetch = globalThis.fetch;
   const calls: Array<{ url: string; body: Record<string, unknown> }> = [];

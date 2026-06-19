@@ -103,6 +103,40 @@ function DiagnosticEntry({ entry, showChannels = true }: { entry: AwarenessEntry
   );
 }
 
+function HiddenContextDetails({
+  text,
+  visibleText,
+  onExpandingContent,
+}: {
+  text?: string;
+  visibleText?: string;
+  onExpandingContent?: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const contextText = text?.trim();
+  if (!contextText || contextText === visibleText?.trim()) return null;
+
+  return (
+    <div className="user-context-details">
+      <button
+        className="user-context-toggle"
+        type="button"
+        onClick={() => {
+          if (!expanded) onExpandingContent?.();
+          setExpanded(!expanded);
+        }}
+        aria-expanded={expanded}
+      >
+        <span className={`tool-caret ${expanded ? 'open' : ''}`} aria-hidden="true">&gt;</span>
+        <span>context</span>
+      </button>
+      {expanded && (
+        <pre className="user-context-pre">{contextText}</pre>
+      )}
+    </div>
+  );
+}
+
 function getOperatorEventLabel(event: OperatorControlEvent): string {
   if (event.kind === 'configured') return 'settings updated';
   if (event.kind === 'assigned') return 'brief assigned';
@@ -636,6 +670,11 @@ export const AwarenessEntryComponent = memo(function AwarenessEntryComponent({ e
           {entry.userName && <span className="awareness-username">{(entry.channel === 'web' && (entry.userName === 'user' || entry.userName === 'web-user')) ? 'you' : entry.userName}</span>}
         </div>
         <div className="awareness-user-text">{text}</div>
+        <HiddenContextDetails
+          text={entry.modelText}
+          visibleText={text}
+          onExpandingContent={onExpandingContent}
+        />
       </div>
     );
   }
