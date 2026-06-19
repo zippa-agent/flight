@@ -54,6 +54,7 @@ test("email prompt names send_message only when delivery tool is registered", ()
 
   assert.match(text, /send_message/);
   assert.equal(text.includes("full_bash"), false);
+  assert.match(event.formatInstructions.join("\n"), /do not retry with another thread or recipient/i);
 });
 
 test("browser prompt names browser_content only when tool is registered", () => {

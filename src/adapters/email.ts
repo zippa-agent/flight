@@ -31,7 +31,9 @@ export interface EmailPayload {
   attachments?: Array<{
     filename: string;
     content_type?: string;
+    contentType?: string;
     content?: string;
+    contentBase64?: string;
     workspace_path?: string;
     size?: number;
   }>;
@@ -117,6 +119,7 @@ export function normalizeEmailEvent(input: {
       "Ordinary assistant text is internal harness output and is not sent to the email participants.",
       "To produce a user-visible reply, call send_message with the email body.",
       `The current email thread target is ${threadTarget}; use it exactly if a tool asks for a target.`,
+      "If send_message fails with a delivery, recipient, or authorization error, do not retry with another thread or recipient; stop after one concise diagnostic.",
       "Do not include provider metadata, Message-ID headers, or markdown fences unless the user explicitly asks for them.",
     ],
     context: {
@@ -149,7 +152,7 @@ function buildEmailMessageText(payload: EmailPayload, body: string): string {
     parts.push("Attachments:");
     for (const attachment of payload.attachments) {
       const details = [
-        attachment.content_type,
+        attachment.content_type || attachment.contentType,
         typeof attachment.size === "number" ? `${attachment.size} bytes` : undefined,
       ].filter(Boolean).join(", ");
       parts.push([

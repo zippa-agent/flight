@@ -337,3 +337,42 @@ test("email attachments are persisted into workspace and exposed as source paths
   assert.match(event.message.text, /Hero Image\.png \(image\/png, 8 bytes\) -> \/workspace\/attachments\/email/u);
   assert.match(event.message.text, /upload_site_content/u);
 });
+
+test("email attachment persistence accepts camelCase adapter payloads", async () => {
+  const bucket = new FakeR2Bucket();
+  const agentId = "6884e994-60f4-4395-8008-38f73989c34d";
+  const env = { FLIGHT_WORKSPACE: bucket.r2 };
+  const payload = {
+    from: "Alex <alex@tinyfat.com>",
+    to: "floopy@tinyfat.ai",
+    subject: "Place this text",
+    body: "Please upload this text file to the site content store.",
+    messageId: "<text-message@example.com>",
+    attachments: [{
+      filename: "content marker.txt",
+      contentType: "text/plain",
+      contentBase64: Buffer.from("marker").toString("base64"),
+    }],
+  };
+
+  const files = await persistEmailAttachments({
+    env,
+    agentId,
+    payload,
+    receivedAt: new Date("2026-06-19T12:00:00.000Z"),
+  });
+  const event = normalizeEmailEvent({
+    agentId,
+    toolsToken: "fat_tools_test",
+    payload: withWorkspaceAttachmentPaths(payload, files),
+    now: new Date("2026-06-19T12:00:00.000Z"),
+  });
+
+  assert.equal(files.length, 1);
+  assert.equal(files[0].contentType, "text/plain");
+  assert.match(files[0].path, /\/content-marker\.txt$/u);
+  assert.deepEqual(bucket.keys(), [
+    `tiny-agents-data/${agentId}/attachments/email/2026-06-19/text-message-example.com/content-marker.txt`,
+  ]);
+  assert.match(event.message.text, /content marker\.txt \(text\/plain, 6 bytes\) -> \/workspace\/attachments\/email/u);
+});

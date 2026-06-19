@@ -12,6 +12,8 @@ export interface EmailAttachmentFile extends WorkspaceFileRecord {
   filename: string;
 }
 
+type EmailAttachmentPayload = NonNullable<EmailPayload["attachments"]>[number];
+
 export async function persistEmailAttachments(input: {
   env: Env;
   agentId: string;
@@ -26,16 +28,17 @@ export async function persistEmailAttachments(input: {
   const files: EmailAttachmentFile[] = [];
 
   for (const attachment of attachments) {
-    if (!attachment.content) continue;
+    const content = attachmentBase64(attachment);
+    if (!content) continue;
     const filename = safeFilename(attachment.filename, "attachment");
     const path = uniqueWorkspacePath(workspacePathInDirectory(directory, filename), used);
-    const bytes = decodeBase64(attachment.content);
+    const bytes = decodeBase64(content);
     const record = await writeWorkspaceFile({
       env: input.env,
       ownerId: input.agentId,
       path,
       content: bytes,
-      contentType: attachment.content_type,
+      contentType: attachmentContentType(attachment),
     });
     files.push({ ...record, filename });
   }
@@ -88,4 +91,12 @@ function decodeBase64(value: string): Uint8Array {
     bytes[i] = binary.charCodeAt(i);
   }
   return bytes;
+}
+
+function attachmentBase64(attachment: EmailAttachmentPayload): string | undefined {
+  return attachment.content || attachment.contentBase64;
+}
+
+function attachmentContentType(attachment: EmailAttachmentPayload): string | undefined {
+  return attachment.content_type || attachment.contentType;
 }
