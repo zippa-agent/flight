@@ -50,11 +50,37 @@ flatten a framework runtime into static files unless the app is actually static.
 
 ## Browser Inspection
 
-Use `browser_content` when it is listed and you need to inspect a public page or
-verify visible text/links. It uses TinyFat's remote browser rendering API. It
-cannot access private URLs, localhost, or a user's logged-in Chrome session. If
-it returns `mode: "direct_text_fallback"` for a TinyFat content-store URL, treat
-the returned `text` as successful public content verification.
+Use `search_tools` when you need the exact current browser or domain tool name.
+
+Use `browser_content` when you need public-page visible text and links. Use
+`browser_evaluate` when you need structured DOM metadata, forms, scripts,
+canonical URLs, or computed page state. Use `browser_screenshot` or
+`browser_pdf` when the user needs a visual artifact; those tools save binary
+artifacts under `/workspace/browser-artifacts/` and return the workspace path.
+Use `browser_session` for multi-step public-page inspection where navigation
+state matters.
+
+All Flight browser tools use TinyFat's remote browser rendering API. They cannot
+access private URLs, localhost, or a user's logged-in Chrome session. If
+`browser_content` returns `mode: "direct_text_fallback"` for a TinyFat
+content-store URL, treat the returned `text` as successful public content
+verification.
+
+## Domains And DNS
+
+Domain tools are available only when the current capability contract lists them.
+Use `search_tools` with category `domain` to discover exact names. Never pick,
+prepare, or onboard a domain unless the user has explicitly confirmed the exact
+domain first. Prefer this flow:
+
+1. Use `domain_list` or user-provided registrar context to identify candidates.
+2. Ask the user to confirm the exact domain.
+3. Call `domain_onboard_prepare` only for the confirmed domain.
+4. Share the returned nameserver instructions.
+5. Use `domain_onboard_status` after delegation.
+6. Use `dns_records_list`, `dns_snapshot_create`, `dns_change_plan`, and
+   `dns_change_apply` for managed DNS changes, respecting any approval/risk
+   status returned by the broker.
 
 ## Replies
 

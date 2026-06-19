@@ -8,12 +8,13 @@ import type { FlightTurnPayload } from "../src/adapters/types";
 const env: Env = {};
 const workspaceEnv: Env = { FLIGHT_WORKSPACE: {} as R2Bucket };
 
-test("no custom tools are available without a turn payload", () => {
-  assert.deepEqual(availableToolNames({ env, turn: null }), []);
+test("search_tools is available even without configured provider tools", () => {
+  assert.deepEqual(availableToolNames({ env, turn: null }), ["search_tools"]);
 });
 
 test("site tools are available when Flight workspace storage is configured", () => {
   assert.deepEqual(availableToolNames({ env: workspaceEnv, turn: null }), [
+    "search_tools",
     "set_site_binding",
     "deploy_site",
     "upload_site_content",
@@ -25,7 +26,7 @@ test("browser content tool requires Crawdad browser credentials", () => {
   assert.deepEqual(availableToolNames({
     env: { CRAWDAD_API_BASE: "https://crawdad.tinyfat.com", CRAWDAD_API_TOKEN: "token" },
     turn: null,
-  }), ["browser_content"]);
+  }), ["search_tools", "browser_content", "browser_evaluate"]);
 });
 
 test("messages-only email turns expose send_message", () => {
@@ -47,8 +48,9 @@ test("messages-only email turns expose send_message", () => {
     toolPolicy: { allowSendMessage: true, allowFullBash: false },
   };
 
-  assert.deepEqual(availableToolNames({ env, turn }), ["send_message"]);
+  assert.deepEqual(availableToolNames({ env, turn }), ["search_tools", "send_message"]);
   assert.deepEqual(availableToolNames({ env: workspaceEnv, turn }), [
+    "search_tools",
     "set_site_binding",
     "deploy_site",
     "upload_site_content",
@@ -76,9 +78,9 @@ test("full_bash requires both policy and Crawdad credentials", () => {
     toolPolicy: { allowSendMessage: true, allowFullBash: true },
   } satisfies FlightTurnPayload;
 
-  assert.deepEqual(availableToolNames({ env, turn }), ["send_message"]);
+  assert.deepEqual(availableToolNames({ env, turn }), ["search_tools", "send_message"]);
   assert.deepEqual(availableToolNames({
     env: { CRAWDAD_API_BASE: "https://crawdad.tinyfat.com", CRAWDAD_API_TOKEN: "token" },
     turn,
-  }), ["browser_content", "send_message", "full_bash"]);
+  }), ["search_tools", "browser_content", "browser_evaluate", "send_message", "full_bash"]);
 });

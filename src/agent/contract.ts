@@ -34,8 +34,26 @@ export function contractText(policy: ToolPolicy, input: RuntimeContractInput = {
   if (available.has("upload_site_content")) {
     tools.push("upload_site_content: available for uploading /workspace files or inline text into a deployed site's R2 content binding.");
   }
+  if (available.has("search_tools")) {
+    tools.push("search_tools: available for finding exact Flight tool names by capability, category, risk, and description. Use it when unsure which browser, site, domain/DNS, conversation, or runtime tool fits a task.");
+  }
   if (available.has("browser_content")) {
     tools.push("browser_content: available for loading public http(s) pages through TinyFat's remote Browser Rendering API and returning rendered text and links. For TinyFat public content-store URLs, it can direct-fetch text as a fallback when browser rendering fails. It cannot access private networks, localhost, or logged-in browser sessions.");
+  }
+  if (available.has("browser_screenshot")) {
+    tools.push("browser_screenshot: available for capturing a public page screenshot. It stores the image under /workspace/browser-artifacts and returns artifact metadata instead of large base64.");
+  }
+  if (available.has("browser_pdf")) {
+    tools.push("browser_pdf: available for rendering a public page to PDF. It stores the PDF under /workspace/browser-artifacts and returns artifact metadata.");
+  }
+  if (available.has("browser_evaluate")) {
+    tools.push("browser_evaluate: available for structured DOM/page inspection on a public URL with a JSON-serializable JavaScript expression.");
+  }
+  if (available.has("browser_session")) {
+    tools.push("browser_session: available for short-lived persistent public-browser sessions with start/status/nav/content/evaluate/screenshot/pdf/close actions. Binary artifacts are saved under /workspace/browser-artifacts.");
+  }
+  if (available.has("domain_list")) {
+    tools.push("Domain/DNS tools: available for managed-domain listing, onboarding preparation, status, record listing, snapshots, change planning/apply, and export. Use search_tools with category \"domain\" for exact names. Never pick or onboard a domain without explicit user confirmation.");
   }
   if (available.has("list_channels")) {
     tools.push("list_channels: available for messages-only turns with durable conversation ledgers. It lists exact email-thread:<id> and slack:<channel_id>:<thread_ts> targets when known.");
