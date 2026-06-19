@@ -93,6 +93,9 @@ export function normalizeSlackEvent(input: {
   const receivedAt = now.toISOString();
   const channel = event.channel.toUpperCase();
   const isDm = event.channel_type === "im" || channel.startsWith("D");
+  if (event.type === "message" && !isDm && input.payload.botUserId && event.text?.includes(`<@${input.payload.botUserId}>`)) {
+    return { status: "skipped", reason: "Ignored Slack channel message duplicate for app_mention." };
+  }
   const directlyAddressed = event.type === "app_mention"
     || isDm
     || (input.payload.botUserId ? Boolean(event.text?.includes(`<@${input.payload.botUserId}>`)) : false);

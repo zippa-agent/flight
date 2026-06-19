@@ -74,6 +74,30 @@ test("slack thread ledger stores and lists durable send targets", async () => {
   assert.equal(records[0].body, "Can you upload this content?");
 });
 
+test("slack channel message duplicate for app mention is skipped", () => {
+  const result = normalizeSlackEvent({
+    agentId,
+    payload: {
+      type: "event_callback",
+      event_id: "EvMessage123",
+      botToken: "xoxb-test",
+      botUserId: "UAGENT",
+      event: {
+        type: "message",
+        channel: "C123ABC",
+        channel_type: "channel",
+        user: "UUSER",
+        text: "<@UAGENT> respond here",
+        ts: "1710000000.123456",
+      },
+    },
+  });
+
+  assert.equal(result.status, "skipped");
+  if (result.status !== "skipped") throw new Error("expected duplicate Slack message to be skipped");
+  assert.match(result.reason, /duplicate/u);
+});
+
 test("send_message posts Slack replies to explicit thread targets", async () => {
   const priorFetch = globalThis.fetch;
   const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
