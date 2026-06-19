@@ -52,7 +52,9 @@ flatten a framework runtime into static files unless the app is actually static.
 
 Use `browser_content` when it is listed and you need to inspect a public page or
 verify visible text/links. It uses TinyFat's remote browser rendering API. It
-cannot access private URLs, localhost, or a user's logged-in Chrome session.
+cannot access private URLs, localhost, or a user's logged-in Chrome session. If
+it returns `mode: "direct_text_fallback"` for a TinyFat content-store URL, treat
+the returned `text` as successful public content verification.
 
 ## Replies
 
