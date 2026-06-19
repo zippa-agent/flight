@@ -136,6 +136,17 @@ export function createDomainTools(input: {
       })),
     }),
     defineTool({
+      name: "domain_route_preflight",
+      description:
+        "Check whether TinyFat's Cloudflare for SaaS provider zone is ready to create custom hostnames for a managed domain. Use before domain_route_prepare so quota/configuration blockers are reported clearly.",
+      parameters: DomainInput,
+      execute: async (args, signal) => brokerJsonResult(await domainRoutePreflight({
+        ...input,
+        request: args,
+        signal,
+      })),
+    }),
+    defineTool({
       name: "domain_route_status",
       description:
         "Refresh and read Cloudflare for SaaS route status for a managed domain, including site_domains TLS/DNS state and host-map routing.",
@@ -291,6 +302,20 @@ export async function domainRoutePrepare(input: {
       includeWww: input.request.include_www,
       primaryHostname: input.request.primary_hostname,
     },
+  });
+}
+
+export async function domainRoutePreflight(input: {
+  env: Env;
+  instanceId: string;
+  request: DomainInputValue;
+  signal?: AbortSignal;
+  fetchImpl?: typeof fetch;
+}): Promise<unknown> {
+  return domainBrokerRequest({
+    ...input,
+    path: `/domains/${encodeURIComponent(normalizeDomain(input.request.domain))}/routes/preflight`,
+    method: "GET",
   });
 }
 

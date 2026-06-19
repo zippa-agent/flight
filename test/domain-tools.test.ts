@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { dnsChangeApprove, dnsChangePlan, domainRoutePrepare, domainRouteStatus, prepareDomainOnboarding } from "../src/tools/domains";
+import { dnsChangeApprove, dnsChangePlan, domainRoutePreflight, domainRoutePrepare, domainRouteStatus, prepareDomainOnboarding } from "../src/tools/domains";
 
 const agentId = "6884e994-60f4-4395-8008-38f73989c34d";
 const instanceId = `${agentId}--agent--d2Vi`;
@@ -144,6 +144,41 @@ test("domain_route_prepare sends Cloudflare for SaaS route intent", async () => 
     primaryHostname: "tinyfat.blog",
   });
   assert.deepEqual(result, { ok: true, domain: "tinyfat.blog", routes: [] });
+});
+
+test("domain_route_preflight reads SaaS provider readiness without mutating DNS", async () => {
+  const calls: Array<{ url: string; method?: string }> = [];
+
+  const result = await domainRoutePreflight({
+    env: {
+      SUPABASE_URL: "https://supabase.test",
+      SUPABASE_SERVICE_ROLE_KEY: "service_role",
+      DOMAIN_BROKER_URL: "https://domains.test",
+    },
+    instanceId,
+    request: {
+      domain: "tinyfat.blog",
+    },
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), method: init?.method });
+      if (String(url).startsWith("https://supabase.test/rest/v1/agents")) {
+        return Response.json([{ id: agentId, tools_token: "fat_tools_test" }]);
+      }
+      return Response.json({
+        ok: true,
+        domain: "tinyfat.blog",
+        cloudflareForSaas: { ready: false, reason: "quota_unallocated" },
+      });
+    },
+  }) as Record<string, unknown>;
+
+  assert.equal(calls.at(-1)?.url, "https://domains.test/domains/tinyfat.blog/routes/preflight");
+  assert.equal(calls.at(-1)?.method, "GET");
+  assert.deepEqual(result, {
+    ok: true,
+    domain: "tinyfat.blog",
+    cloudflareForSaas: { ready: false, reason: "quota_unallocated" },
+  });
 });
 
 test("domain_route_status forwards optional hostnames as query params", async () => {

@@ -78,15 +78,18 @@ domain first. Prefer this flow:
 3. Call `domain_onboard_prepare` only for the confirmed domain.
 4. Share the returned nameserver instructions.
 5. Use `domain_onboard_status` after delegation.
-6. For a TinyFat production site hostname, call `domain_route_prepare` with the
+6. For a TinyFat production site hostname, call `domain_route_preflight` first.
+   If it reports `cloudflareForSaas.ready: false`, explain the named blocker
+   and do not attempt DNS cutover records yet.
+7. Call `domain_route_prepare` with the
    managed domain and the exact site tenant/script name. This prepares the
    Cloudflare for SaaS custom hostname, writes TinyFat host routing, records
    `site_domains` state, and returns DNS-only CNAME/TXT changes for review.
-7. Use `dns_records_list`, `dns_snapshot_create`, `dns_change_plan`,
+8. Use `dns_records_list`, `dns_snapshot_create`, `dns_change_plan`,
    `dns_change_approve`, and `dns_change_apply` for the returned DNS changes.
    Call `dns_change_approve` only after explicit user confirmation of the
    exact high-risk change set.
-8. Use `domain_route_status` after DNS application to refresh TLS/DNS state.
+9. Use `domain_route_status` after DNS application to refresh TLS/DNS state.
 
 Do not create proxied CNAMEs from a customer Cloudflare zone to a TinyFat dev
 or preview hostname. The production route target is the DNS-only Cloudflare for

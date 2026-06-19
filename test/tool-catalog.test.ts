@@ -48,6 +48,7 @@ test("registry resolves catalog-backed browser and domain tools", () => {
     "dns_change_plan",
     "dns_records_list",
     "dns_snapshot_create",
+    "domain_route_preflight",
     "domain_route_prepare",
     "domain_route_status",
     "domain_export",
