@@ -54,7 +54,7 @@ export function createDeploySiteTool(input: {
   return defineTool({
     name: "deploy_site",
     description:
-      "Deploy a website from /workspace to TinyFat Sites. Static sites publish directly. Unbuilt npm/Astro projects can be built in a temporary TinyFat container. Use mode \"worker\" for framework apps. EmDash can deploy dist/server plus dist/client. Payload/OpenNext should deploy a Wrangler dry-run bundle containing worker.js plus an assets/ directory copied from .open-next/assets.",
+      "Deploy a website from /workspace to TinyFat Sites. Static sites publish directly. Unbuilt npm/Astro projects can be built in a temporary TinyFat container. Use mode \"worker\" for framework apps. EmDash can deploy dist/server plus dist/client. Payload/OpenNext should deploy a Wrangler dry-run bundle containing worker.js plus an assets/ directory copied from .open-next/assets; set the admin users collection to lockDocuments: false before building Payload/D1 workers unless document locks have been tested.",
     parameters: DeploySiteInput,
     execute: async (args, signal) => {
       const { ownerId, toolsToken } = await agentToolsToken(input);

@@ -26,7 +26,10 @@ run `wrangler deploy --dry-run --outdir .flight-deploy`, copy `.open-next/assets
 into `.flight-deploy/assets`, write `.flight-deploy/wrangler.json` with
 `main`, compatibility flags, `D1`/`R2` bindings, and a non-empty
 `vars.PAYLOAD_SECRET`, then call `deploy_site` with `mode: "worker"` and
-`output_path: ".flight-deploy"`.
+`output_path: ".flight-deploy"`. For Payload/D1 Worker builds, set the admin
+users collection to `lockDocuments: false` before building unless document locks
+have been explicitly tested; the default lock lookup can break the authenticated
+`/admin/account` route on Cloudflare D1.
 Use `set_site_binding` before `deploy_site` when a site needs Cloudflare R2, D1,
 or KV bindings at runtime. Payload needs D1 binding `D1` and R2 binding `R2`.
 Use `upload_site_content` after deployment to place
