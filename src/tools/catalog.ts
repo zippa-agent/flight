@@ -15,6 +15,7 @@ import { createDomainTools } from "./domains";
 import { createFullBashTool } from "./full-bash";
 import { createListChannelsTool } from "./list-channels";
 import { createReadThreadTool } from "./read-thread";
+import { createRememberContactTool } from "./remember-contact";
 import { createSendMessageTool } from "./send-message";
 import { createSetSiteBindingTool } from "./set-site-binding";
 import { createUploadSiteContentTool } from "./upload-site-content";
@@ -66,6 +67,7 @@ export function buildToolCatalog(input: ToolCatalogInput): ToolCatalogEntry[] {
   const workspaceAvailable = !!input.env.FLIGHT_WORKSPACE;
   const conversationAvailable = !!(input.turn && policy.allowSendMessage);
   const threadedConversationAvailable = workspaceAvailable && !!input.turn && supportsConversationTools(input.turn.event.adapter);
+  const contactBookAvailable = workspaceAvailable && !!input.turn;
   const domainsAvailable = workspaceAvailable && hasSupabaseForAgentTools(input.env);
 
   return [
@@ -202,6 +204,18 @@ export function buildToolCatalog(input: ToolCatalogInput): ToolCatalogEntry[] {
       risk: "read",
       available: threadedConversationAvailable,
       create: () => createReadThreadTool({ env: input.env, agentId: input.turn?.event.agentId || "" }),
+    },
+    {
+      name: "remember_contact",
+      category: "conversation",
+      description:
+        "Remember a simple contact label for a phone number, email address, Slack user id/name, or other identity in this agent's R2 contact book.",
+      promptDetail:
+        "remember_contact: store/update a local contact label used by list_channels and read_thread. Use only for explicit user/admin mappings or trusted CRM/contact lookup results.",
+      keywords: ["conversation", "contact", "crm", "phone", "email", "slack", "address book", "label"],
+      risk: "write",
+      available: contactBookAvailable,
+      create: () => createRememberContactTool({ env: input.env, agentId: input.turn?.event.agentId || "" }),
     },
     {
       name: "send_message",

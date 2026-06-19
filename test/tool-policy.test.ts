@@ -56,6 +56,7 @@ test("messages-only email turns expose send_message", () => {
     "upload_site_content",
     "list_channels",
     "read_thread",
+    "remember_contact",
     "send_message",
   ]);
 });

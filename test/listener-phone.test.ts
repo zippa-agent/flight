@@ -9,7 +9,9 @@ import {
   readPhoneThreadByTarget,
   parsePhoneThreadTarget,
 } from "../src/adapters/phone/thread-ledger";
+import { rememberContactIdentity } from "../src/listener/contacts";
 import { noteListenerInboundThread, readListenerThreadStates } from "../src/listener/store";
+import { createListChannelsTool } from "../src/tools/list-channels";
 import { createReadThreadTool } from "../src/tools/read-thread";
 import { FakeR2Bucket } from "./support/fake-r2";
 import type { Env } from "../src/env";
@@ -42,7 +44,7 @@ test("phone listener ledger stores targets and read_thread can explicitly mark r
     from: "+1 (555) 000-2222",
     to: "+1 (555) 000-1111",
     sender: "+1 (555) 000-1111",
-    recipients: ["+1 (555) 000-1111"],
+    recipients: ["+1 (555) 000-1111", "+1 (555) 000-3333"],
     text: "Alice confirmed Tuesday.",
     timestamp: "2026-06-19T10:00:00.000Z",
   };
@@ -76,6 +78,28 @@ test("phone listener ledger stores targets and read_thread can explicitly mark r
   assert.equal(records.length, 1);
   assert.equal(records[0].body, "Alice confirmed Tuesday.");
 
+  await rememberContactIdentity({
+    env,
+    agentId,
+    identityKind: "phone",
+    identity: payload.from,
+    displayName: "Alice",
+  });
+  await rememberContactIdentity({
+    env,
+    agentId,
+    identityKind: "phone",
+    identity: "+1 (555) 000-3333",
+    displayName: "Bob",
+  });
+
+  const listTool = createListChannelsTool({ env, agentId });
+  const channelList = await listTool.execute?.({
+    limit: 10,
+  }, new AbortController().signal);
+  assert.match(String(channelList), /Alice \(\+15550002222\)/u);
+  assert.match(String(channelList), /Bob \(\+15550003333\)/u);
+
   let states = await readListenerThreadStates(env, agentId);
   assert.equal(states[target].read, false);
 
@@ -86,6 +110,8 @@ test("phone listener ledger stores targets and read_thread can explicitly mark r
   }, new AbortController().signal);
 
   assert.match(String(transcript), /Alice confirmed Tuesday/u);
+  assert.match(String(transcript), /Alice \(\+15550002222\)/u);
+  assert.match(String(transcript), /Participants: Alice \(\+15550002222\), \+15550001111, Bob \(\+15550003333\)/u);
   assert.match(String(transcript), /Read state: read/u);
 
   states = await readListenerThreadStates(env, agentId);

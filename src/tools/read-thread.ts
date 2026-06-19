@@ -16,6 +16,7 @@ import {
   readSlackThreadByTarget,
   type SlackThreadLedgerRecord,
 } from "../adapters/slack/thread-ledger";
+import { formatContactList, formatResolvedIdentity, readContactBook, type ContactBook } from "../listener/contacts";
 import { setListenerThreadReadState } from "../listener/store";
 import type { ListenerReadMark } from "../listener/types";
 
@@ -39,12 +40,13 @@ export function createReadThreadTool(input: {
       "Read the transcript for a known conversation target, currently email-thread:<id>, phone-..., slack:<channel_id>:<thread_ts>, slack:<channel_id>, or a raw Slack channel/DM/group id. By default this does not change read state; pass mark: \"read\" or mark: \"unread\" only when you deliberately want to update listener state.",
     parameters: ReadThreadInput,
     execute: async ({ target, limit, mark }) => {
+      const contactBook = await readContactBook(input.env, input.agentId);
       const emailTarget = parseEmailThreadTarget(target);
       if (emailTarget) {
         const records = await readEmailThreadById(input.env, input.agentId, emailTarget.threadId, limit);
         if (records.length === 0) return `No transcript found for ${emailTarget.inputTarget}.`;
         return withMarkResult(
-          formatEmailThreadTranscript(emailTarget.inputTarget, records),
+          formatEmailThreadTranscript(emailTarget.inputTarget, records, contactBook),
           await applyMark(input.env, input.agentId, emailTarget.inputTarget, mark),
         );
       }
@@ -54,7 +56,7 @@ export function createReadThreadTool(input: {
         const records = await readPhoneThreadByTarget(input.env, input.agentId, phoneTarget, limit);
         if (records.length === 0) return `No transcript found for ${phoneTarget.inputTarget}.`;
         return withMarkResult(
-          formatPhoneThreadTranscript(phoneTarget.inputTarget, records),
+          formatPhoneThreadTranscript(phoneTarget.inputTarget, records, contactBook),
           await applyMark(input.env, input.agentId, phoneTarget.inputTarget, mark),
         );
       }
@@ -64,7 +66,7 @@ export function createReadThreadTool(input: {
         const records = await readSlackThreadByTarget(input.env, input.agentId, slackTarget, limit);
         if (records.length === 0) return `No transcript found for ${slackTarget.inputTarget}.`;
         return withMarkResult(
-          formatSlackThreadTranscript(slackTarget.inputTarget, records),
+          formatSlackThreadTranscript(slackTarget.inputTarget, records, contactBook),
           await applyMark(input.env, input.agentId, slackTarget.inputTarget, mark),
         );
       }
@@ -74,12 +76,16 @@ export function createReadThreadTool(input: {
   });
 }
 
-function formatEmailThreadTranscript(target: string, records: EmailThreadLedgerRecord[]): string {
+function formatEmailThreadTranscript(
+  target: string,
+  records: EmailThreadLedgerRecord[],
+  contactBook: ContactBook,
+): string {
   const lines = [
     `Thread: ${target}`,
     "",
     ...records.map((record) => [
-      `## ${record.at || "(unknown time)"} - ${sender(record)}`,
+      `## ${record.at || "(unknown time)"} - ${emailSender(record, contactBook)}`,
       record.subject ? `Subject: ${record.subject}` : "",
       "",
       normalizeText(record.body) || "(no body captured)",
@@ -88,14 +94,19 @@ function formatEmailThreadTranscript(target: string, records: EmailThreadLedgerR
   return lines.join("\n\n");
 }
 
-function formatPhoneThreadTranscript(target: string, records: PhoneThreadLedgerRecord[]): string {
+function formatPhoneThreadTranscript(
+  target: string,
+  records: PhoneThreadLedgerRecord[],
+  contactBook: ContactBook,
+): string {
   const lines = [
     `Thread: ${target}`,
     "",
     ...records.map((record) => [
-      `## ${record.at || "(unknown time)"} - ${phoneSender(record)}`,
+      `## ${record.at || "(unknown time)"} - ${phoneSender(record, contactBook)}`,
       `Transport: ${record.transport || "unknown"}`,
       record.conversationId ? `Conversation: ${record.conversationId}` : "",
+      phoneParticipants(record, contactBook),
       "",
       normalizeText(record.body) || "(no text captured)",
     ].filter(Boolean).join("\n")),
@@ -103,12 +114,16 @@ function formatPhoneThreadTranscript(target: string, records: PhoneThreadLedgerR
   return lines.join("\n\n");
 }
 
-function formatSlackThreadTranscript(target: string, records: SlackThreadLedgerRecord[]): string {
+function formatSlackThreadTranscript(
+  target: string,
+  records: SlackThreadLedgerRecord[],
+  contactBook: ContactBook,
+): string {
   const lines = [
     `Thread: ${target}`,
     "",
     ...records.map((record) => [
-      `## ${record.at || "(unknown time)"} - ${slackSender(record)}`,
+      `## ${record.at || "(unknown time)"} - ${slackSender(record, contactBook)}`,
       record.channelName ? `Channel: #${record.channelName}` : `Channel: ${record.channelId}`,
       record.threadTs ? `Thread ts: ${record.threadTs}` : "",
       record.messageTs ? `Message ts: ${record.messageTs}` : "",
@@ -119,19 +134,31 @@ function formatSlackThreadTranscript(target: string, records: SlackThreadLedgerR
   return lines.join("\n\n");
 }
 
-function sender(record: EmailThreadLedgerRecord): string {
+function emailSender(record: EmailThreadLedgerRecord, contactBook: ContactBook): string {
   if (record.type === "outbound") return record.from || "agent";
-  return record.from || "unknown sender";
+  return formatResolvedIdentity(contactBook, record.from) || "unknown sender";
 }
 
-function slackSender(record: SlackThreadLedgerRecord): string {
+function slackSender(record: SlackThreadLedgerRecord, contactBook: ContactBook): string {
   if (record.type === "outbound") return record.userName || "agent";
-  return record.userName || record.userId || "unknown Slack sender";
+  const userIdLabel = formatResolvedIdentity(contactBook, record.userId);
+  if (record.userId && userIdLabel && userIdLabel !== record.userId) return userIdLabel;
+  return formatResolvedIdentity(contactBook, record.userName) || userIdLabel || "unknown Slack sender";
 }
 
-function phoneSender(record: PhoneThreadLedgerRecord): string {
+function phoneSender(record: PhoneThreadLedgerRecord, contactBook: ContactBook): string {
   if (record.type === "outbound") return record.sender || record.to || "agent";
-  return record.from || "unknown phone sender";
+  return formatResolvedIdentity(contactBook, record.from) || "unknown phone sender";
+}
+
+function phoneParticipants(record: PhoneThreadLedgerRecord, contactBook: ContactBook): string {
+  const participants = formatContactList(contactBook, [
+    record.from,
+    record.to,
+    record.sender,
+    ...(record.recipients || []),
+  ]);
+  return participants.length ? `Participants: ${participants.join(", ")}` : "";
 }
 
 function normalizeText(value: unknown): string {

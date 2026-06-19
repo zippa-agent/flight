@@ -61,6 +61,9 @@ export function contractText(policy: ToolPolicy, input: RuntimeContractInput = {
   if (available.has("read_thread")) {
     tools.push("read_thread: available for reading a known email-thread:<id>, phone-..., slack:<channel_id>:<thread_ts>, or slack:<channel_id> target. It does not change read state unless you explicitly pass mark: \"read\" or mark: \"unread\".");
   }
+  if (available.has("remember_contact")) {
+    tools.push("remember_contact: available for updating the local R2 contact book when the user/admin gives you an identity mapping or a trusted CRM/contact lookup confirms one. This only affects how future list_channels/read_thread output labels contacts.");
+  }
   if (policy.allowYieldNoAction && available.has("yield_no_action")) {
     tools.push("yield_no_action: available for ambient or passive turns only. Use it when you were not directly addressed and have nothing useful to add; it records a quiet no-op without sending a user-visible message.");
   }

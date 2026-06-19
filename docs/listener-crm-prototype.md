@@ -24,9 +24,16 @@ Flight appends durable thread events into the agent workspace R2 bucket:
 - `.flight/email-thread-events/`
 - `.flight/phone-thread-events/`
 - `.flight/listener-thread-state.json`
+- `.flight/contacts.json`
 
 The listener state sidecar tracks only `read: true | false` plus small preview
 metadata. It is not the source transcript; the append-only ledgers are.
+
+The contact book is a small agent-editable label map, not a CRM table. The
+agent can call `remember_contact` when the admin provides a mapping such as a
+phone number to a person, or when a trusted CRM lookup confirms one. Flight then
+hydrates `list_channels` and `read_thread` output with those labels while the
+raw ledgers remain unchanged.
 
 ## Policy Sources
 
