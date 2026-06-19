@@ -21,6 +21,9 @@ traffic into Flight.
   first unlabeled call failed, then the model retried with the label
   `Slack reply to thread`.
 - Verified Floopy posted a visible Slack thread reply.
+- After deploying the duplicate guard, sent a second real Slack app mention and
+  verified Slack showed exactly one Floopy thread reply while Flight showed the
+  matching Slack stream entry and labeled `send_message` tool call.
 
 The first live test also showed Slack can deliver both `app_mention` and normal
 channel `message` events for the same mention when both event subscriptions are
@@ -46,8 +49,7 @@ mention path.
 
 ## Manual QA Gaps
 
-- The duplicate-message fix was deployed after the first real Slack mention. The
-  pre-fix Slack thread shows the expected reply plus a duplicate reply from the
-  duplicate event. The new regression test covers this case; a post-deploy
-  second live Slack mention can confirm the production duplicate behavior is gone
-  without relying on the automated test alone.
+- None for the Slack app-mention path. The only observed noise was from
+  Computer Use interacting with Slack's rich-text composer during test-message
+  entry; that affected one pre-fix test message's wording, not the Slack runtime
+  behavior.
