@@ -18,8 +18,9 @@ const DeploySiteInput = v.object({
   path: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(500))),
   environment: v.optional(v.union([v.literal("preview"), v.literal("production")])),
   message: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(200))),
+  mode: v.optional(v.union([v.literal("auto"), v.literal("static"), v.literal("worker")])),
   build: v.optional(v.boolean()),
-  build_command: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(1000))),
+  build_command: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(3000))),
   output_path: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(500))),
 });
 
@@ -34,7 +35,7 @@ export interface DeploySiteResult {
   ok: true;
   site: string;
   environment: "preview" | "production";
-  mode: "static" | "built";
+  mode: "static" | "built" | "worker";
   sourcePath: string;
   files: number;
   bytes: number;
@@ -53,7 +54,7 @@ export function createDeploySiteTool(input: {
   return defineTool({
     name: "deploy_site",
     description:
-      "Deploy a website from /workspace to TinyFat Sites. If the path is an unbuilt npm/Astro app, this builds it in the configured TinyFat container and deploys the built output. If the path already has index.html, this publishes it directly.",
+      "Deploy a website from /workspace to TinyFat Sites. Static sites publish directly. Unbuilt npm/Astro projects can be built in a temporary TinyFat container. Use mode \"worker\" for framework apps. EmDash can deploy dist/server plus dist/client. Payload/OpenNext should deploy a Wrangler dry-run bundle containing worker.js plus an assets/ directory copied from .open-next/assets.",
     parameters: DeploySiteInput,
     execute: async (args, signal) => {
       const { ownerId, toolsToken } = await agentToolsToken(input);
@@ -92,7 +93,9 @@ export async function deploySiteFromWorkspace(input: {
 
   const shouldBuild = input.request.build === true || (input.request.build !== false && looksLikeBuildableApp(files) && !hasRootIndex(files));
   const environment = input.request.environment || "preview";
-  const publishUrl = publishDeployUrl(input.env, input.request.site);
+  const deployMode = input.request.mode || "auto";
+  const workerMode = deployMode === "worker";
+  const publishUrl = publishDeployUrl(input.env, input.request.site, workerMode ? "deploy-worker" : "deploy");
 
   if (shouldBuild) {
     const sourceTarball = await gzip(createTar(files));
@@ -119,7 +122,7 @@ export async function deploySiteFromWorkspace(input: {
       ok: true,
       site: input.request.site,
       environment,
-      mode: "built",
+      mode: workerMode ? "worker" : "built",
       sourcePath: source.displayPath,
       files: buildResult.files,
       bytes: buildResult.bytes,
@@ -132,7 +135,7 @@ export async function deploySiteFromWorkspace(input: {
     };
   }
 
-  assertDeployableStaticSite(files, source.displayPath);
+  if (!workerMode) assertDeployableStaticSite(files, source.displayPath);
   const tarball = await gzip(createTar(files));
   const deployment = await publishSiteTarball({
     fetchImpl: input.fetchImpl,
@@ -148,7 +151,7 @@ export async function deploySiteFromWorkspace(input: {
     ok: true,
     site: input.request.site,
     environment,
-    mode: "static",
+    mode: workerMode ? "worker" : "static",
     sourcePath: source.displayPath,
     files: files.length,
     bytes: files.reduce((sum, file) => sum + file.content.byteLength, 0),
@@ -266,8 +269,8 @@ function shouldSkipDeployPath(path: string): boolean {
   ));
 }
 
-function publishDeployUrl(env: Env, site: string): string {
-  return siteApiUrl(env, site, "deploy");
+function publishDeployUrl(env: Env, site: string, path: "deploy" | "deploy-worker"): string {
+  return siteApiUrl(env, site, path);
 }
 
 async function publishSiteTarball(input: {

@@ -102,6 +102,55 @@ test("deploy_site builds an unbuilt app in the container before publishing", asy
   assert.equal(result.build?.outputPath, "/workspace/dist");
 });
 
+test("deploy_site sends built framework artifacts to the worker deploy endpoint", async () => {
+  const bucket = new FakeR2Bucket();
+  await bucket.r2.put(`tiny-agents-data/${agentId}/package.json`, "{\"scripts\":{\"build\":\"astro build\"}}");
+  await bucket.r2.put(`tiny-agents-data/${agentId}/astro.config.mjs`, "export default {}");
+  await bucket.r2.put(`tiny-agents-data/${agentId}/src/pages/index.astro`, "<h1>EmDash</h1>");
+
+  let captured: { url?: string; body?: ArrayBuffer; headers?: Headers } = {};
+
+  const result = await deploySiteFromWorkspace({
+    env: {
+      FLIGHT_WORKSPACE: bucket.r2,
+      SITES_PUBLISH_URL: "https://publish.test/api/sites",
+      CRAWDAD_API_BASE: "https://crawdad.test",
+      CRAWDAD_API_TOKEN: "fat_ops_test",
+    },
+    ownerId: agentId,
+    toolsToken: "fat_tools_test",
+    request: {
+      site: "mom-emdash",
+      mode: "worker",
+      message: "Real EmDash deploy",
+    },
+    buildImpl: async () => ({
+      tarball: new Uint8Array([0x1f, 0x8b, 0x08]).buffer,
+      command: "npm run build",
+      outputPath: "dist",
+      files: 42,
+      bytes: 4096,
+      log: "built worker",
+    }),
+    fetchImpl: async (url, init) => {
+      captured = {
+        url: String(url),
+        headers: new Headers(init?.headers),
+        body: init?.body as ArrayBuffer,
+      };
+      return Response.json({ url: "https://main-mom-emdash.tinyfat.dev/", mode: "worker" });
+    },
+  });
+
+  assert.equal(captured.url, "https://publish.test/api/sites/mom-emdash/deploy-worker");
+  assert.equal(captured.headers?.get("Authorization"), "Bearer fat_tools_test");
+  assert.equal(captured.headers?.get("X-Deploy-Message"), "Real EmDash deploy");
+  assert.equal(new Uint8Array(captured.body || new ArrayBuffer(0))[0], 0x1f);
+  assert.equal(result.mode, "worker");
+  assert.equal(result.files, 42);
+  assert.equal(result.bytes, 4096);
+});
+
 test("set_site_binding provisions a site resource through sites publish", async () => {
   let captured: { url?: string; body?: Record<string, unknown>; headers?: Headers } = {};
   const result = await setSiteBinding({

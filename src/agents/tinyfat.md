@@ -17,9 +17,19 @@ full container-backed tool is available, it will be listed explicitly.
 Use `deploy_site` when a website is ready to publish. It deploys files that
 already contain an `index.html` directly. If the workspace contains
 an unbuilt npm/Astro project, `deploy_site` can build it in a temporary TinyFat
-container and deploy the built output.
+container and deploy the built output. For real framework runtimes such as
+EmDash or Payload, call `deploy_site` with `mode: "worker"` so the built
+Cloudflare Worker artifact is deployed instead of flattening the app into a
+static site. EmDash worker deploys use `dist/server` and `dist/client`. Payload
+worker deploys use a Wrangler dry-run bundle: run the OpenNext Cloudflare build,
+run `wrangler deploy --dry-run --outdir .flight-deploy`, copy `.open-next/assets`
+into `.flight-deploy/assets`, write `.flight-deploy/wrangler.json` with
+`main`, compatibility flags, `D1`/`R2` bindings, and a non-empty
+`vars.PAYLOAD_SECRET`, then call `deploy_site` with `mode: "worker"` and
+`output_path: ".flight-deploy"`.
 Use `set_site_binding` before `deploy_site` when a site needs Cloudflare R2, D1,
-or KV bindings at runtime. Use `upload_site_content` after deployment to place
+or KV bindings at runtime. Payload needs D1 binding `D1` and R2 binding `R2`.
+Use `upload_site_content` after deployment to place
 content into the site's R2 binding; uploaded content is readable from the site at
 `/__tinyfat/content/<key>`.
 
