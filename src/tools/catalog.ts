@@ -65,7 +65,7 @@ export function buildToolCatalog(input: ToolCatalogInput): ToolCatalogEntry[] {
   const browserAvailable = !!(input.env.CRAWDAD_API_BASE && input.env.CRAWDAD_API_TOKEN);
   const workspaceAvailable = !!input.env.FLIGHT_WORKSPACE;
   const conversationAvailable = !!(input.turn && policy.allowSendMessage);
-  const threadedConversationAvailable = workspaceAvailable && supportsConversationTools(input.turn?.event.adapter) && conversationAvailable;
+  const threadedConversationAvailable = workspaceAvailable && !!input.turn && supportsConversationTools(input.turn.event.adapter);
   const domainsAvailable = workspaceAvailable && hasSupabaseForAgentTools(input.env);
 
   return [
@@ -183,10 +183,10 @@ export function buildToolCatalog(input: ToolCatalogInput): ToolCatalogEntry[] {
       name: "list_channels",
       category: "conversation",
       description:
-        "List durable email and Slack conversation targets known in this relationship scope.",
+        "List durable email, phone, and Slack conversation targets known in this relationship scope.",
       promptDetail:
-        "list_channels: list exact email-thread:<id> and slack:<channel_id>:<thread_ts> targets when known.",
-      keywords: ["conversation", "email", "slack", "channels", "threads"],
+        "list_channels: list exact email-thread:<id>, phone-..., and slack:<channel_id>:<thread_ts> targets when known, including read/unread listener status.",
+      keywords: ["conversation", "email", "phone", "sms", "slack", "channels", "threads", "unread"],
       risk: "read",
       available: threadedConversationAvailable,
       create: () => createListChannelsTool({ env: input.env, agentId: input.turn?.event.agentId || "" }),
@@ -195,10 +195,10 @@ export function buildToolCatalog(input: ToolCatalogInput): ToolCatalogEntry[] {
       name: "read_thread",
       category: "conversation",
       description:
-        "Read a known email or Slack thread target before deciding where or how to reply.",
+        "Read a known email, phone, or Slack thread target before deciding what action to take.",
       promptDetail:
-        "read_thread: read a known email-thread:<id>, slack:<channel_id>:<thread_ts>, or slack:<channel_id> target.",
-      keywords: ["conversation", "thread", "email", "slack", "history"],
+        "read_thread: read a known email-thread:<id>, phone-..., slack:<channel_id>:<thread_ts>, or slack:<channel_id> target. Optional mark updates listener read state only when explicitly set.",
+      keywords: ["conversation", "thread", "email", "phone", "sms", "slack", "history", "read", "unread"],
       risk: "read",
       available: threadedConversationAvailable,
       create: () => createReadThreadTool({ env: input.env, agentId: input.turn?.event.agentId || "" }),
@@ -362,7 +362,7 @@ function scoreEntry(entry: ToolCatalogEntry, query: string): number {
 }
 
 function supportsConversationTools(adapter: string | undefined): boolean {
-  return adapter === "email" || adapter === "slack";
+  return adapter === "email" || adapter === "phone" || adapter === "sms" || adapter === "slack" || adapter === "flight" || adapter === "web";
 }
 
 function hasSupabaseForAgentTools(env: Env): boolean {

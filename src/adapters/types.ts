@@ -8,6 +8,7 @@ export type AdapterName =
   | "docs"
   | "support"
   | "slack"
+  | "phone"
   | "telegram"
   | "sms"
   | "voice"

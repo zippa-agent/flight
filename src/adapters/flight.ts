@@ -40,6 +40,7 @@ function coerceAdapter(value: unknown, fallback: string): AdapterName {
     case "email":
     case "support":
     case "slack":
+    case "phone":
     case "telegram":
     case "sms":
     case "voice":
@@ -67,7 +68,7 @@ function coerceScopeKind(value: unknown, adapter: AdapterName): ScopeKind {
       if (adapter === "embed" || adapter === "docs") return "embed-session";
       if (adapter === "email") return "email-thread";
       if (adapter === "support") return "support-ticket";
-      if (adapter === "sms" || adapter === "voice") return "phone-number";
+      if (adapter === "phone" || adapter === "sms" || adapter === "voice") return "phone-number";
       if (adapter === "slack" || adapter === "telegram") return "channel";
       return "agent";
   }

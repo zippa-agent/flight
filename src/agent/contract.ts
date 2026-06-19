@@ -56,10 +56,10 @@ export function contractText(policy: ToolPolicy, input: RuntimeContractInput = {
     tools.push("Domain/DNS tools: available for managed-domain listing, onboarding preparation, status, record listing, snapshots, change planning, explicit approval, apply, and export. Use search_tools with category \"domain\" for exact names. Never pick, onboard, or approve high-risk DNS changes without explicit user confirmation.");
   }
   if (available.has("list_channels")) {
-    tools.push("list_channels: available for messages-only turns with durable conversation ledgers. It lists exact email-thread:<id> and slack:<channel_id>:<thread_ts> targets when known.");
+    tools.push("list_channels: available for turns with durable conversation ledgers. It lists exact email-thread:<id>, phone-..., and slack:<channel_id>:<thread_ts> targets when known, including read/unread listener status.");
   }
   if (available.has("read_thread")) {
-    tools.push("read_thread: available for reading a known email-thread:<id>, slack:<channel_id>:<thread_ts>, or slack:<channel_id> target before choosing where to send a reply.");
+    tools.push("read_thread: available for reading a known email-thread:<id>, phone-..., slack:<channel_id>:<thread_ts>, or slack:<channel_id> target. It does not change read state unless you explicitly pass mark: \"read\" or mark: \"unread\".");
   }
   if (policy.allowYieldNoAction && available.has("yield_no_action")) {
     tools.push("yield_no_action: available for ambient or passive turns only. Use it when you were not directly addressed and have nothing useful to add; it records a quiet no-op without sending a user-visible message.");
