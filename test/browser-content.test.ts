@@ -35,6 +35,36 @@ test("browser_content returns Crawdad rendered content when the browser succeeds
   assert.equal(result.text, "Example page");
 });
 
+test("browser_content binds global fetch when no test fetch is injected", async () => {
+  const originalFetch = globalThis.fetch;
+  const calls: string[] = [];
+  globalThis.fetch = (async function fetchWithReceiverCheck(this: unknown, url) {
+    assert.equal(this, globalThis);
+    calls.push(String(url));
+    return Response.json({
+      ok: true,
+      action: "content",
+      url: "https://example.com/",
+      title: "Example",
+      text: "bound fetch",
+      links: [],
+    });
+  }) as typeof fetch;
+
+  try {
+    const result = await fetchBrowserContent({
+      env,
+      instanceId,
+      request: { url: "https://example.com/" },
+    }) as Record<string, unknown>;
+
+    assert.equal(calls.length, 1);
+    assert.equal(result.text, "bound fetch");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("browser_content falls back to direct text fetch for TinyFat content-store objects", async () => {
   const target = "https://main-floopy-payload-live.tinyfat.dev/__tinyfat/content/qa/floopy-dashboard-upload-20260619.txt";
   const marker = "DASHBOARD_UPLOAD_MARKER_20260619_FLIGHT";

@@ -59,7 +59,7 @@ export async function fetchBrowserContent(input: {
   }
 
   const base = input.env.CRAWDAD_API_BASE.replace(/\/+$/g, "");
-  const fetchImpl = input.fetchImpl || fetch;
+  const fetchImpl = input.fetchImpl || globalThis.fetch.bind(globalThis);
 
   try {
     return await fetchRenderedBrowserContent({
