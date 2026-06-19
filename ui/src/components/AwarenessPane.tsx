@@ -14,7 +14,7 @@ import { mergeOptimisticEntries } from '../optimisticEntries';
 import type { AwarenessEntry, ContentBlock, ToolCallContent, ToolResultContent } from '../types';
 import { isSettingsCommand, isVoiceCommand } from '../slashCommands';
 import { compactModelLabel, formatThinkingLevel } from '../agentSettingsDisplay';
-import { fetchAgentSettings, type AgentSettingsSnapshot } from '../console-api';
+import { fetchAgentSettings, uploadWorkspaceFiles, type AgentSettingsSnapshot, type UploadedWorkspaceFile } from '../console-api';
 import { AwarenessEntryComponent } from './AwarenessEntry';
 import { InputBar } from './InputBar';
 import { SettingsMenu } from './SettingsMenu';
@@ -67,6 +67,8 @@ export function AwarenessPane({
   const [settingsSnapshot, setSettingsSnapshot] = useState<AgentSettingsSnapshot | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadToast, setUploadToast] = useState<string | null>(null);
   const [initialDraft] = useState(initialDraftFromUrl);
 
   const contextEntriesForVoice = useMemo(
@@ -310,6 +312,33 @@ export function AwarenessPane({
     sendMessage(text);
   }, [allowCommands, sendMessage]);
 
+  const handleUploadFiles = useCallback((files: File[]) => {
+    if (files.length === 0) return;
+    setLocalError(null);
+    setUploading(true);
+    setUploadToast(`Uploading ${files.length} file${files.length === 1 ? '' : 's'}...`);
+    uploadWorkspaceFiles(files)
+      .then((uploaded) => {
+        if (uploaded.length === 0) {
+          setUploadToast(null);
+          return;
+        }
+        setUploadToast(`Uploaded ${uploaded.length} file${uploaded.length === 1 ? '' : 's'}.`);
+        sendMessage(uploadMessage(uploaded), {
+          sourceEventType: 'dashboard_upload',
+          deliveryId: `dashboard-upload-${Date.now()}`,
+        });
+        window.setTimeout(() => setUploadToast(null), 4000);
+      })
+      .catch((err) => {
+        setLocalError(err instanceof Error ? err.message : 'Upload failed');
+        setUploadToast(null);
+      })
+      .finally(() => {
+        setUploading(false);
+      });
+  }, [sendMessage]);
+
   const openSettings = useCallback((section: 'turn' | 'voice' = 'turn') => {
     setSettingsSection(section);
     setSettingsFocusVersion((version) => version + 1);
@@ -419,6 +448,12 @@ export function AwarenessPane({
         </div>
       )}
 
+      {uploadToast && (
+        <div className="upload-toast">
+          {uploadToast}
+        </div>
+      )}
+
       {allowVoice && isVoiceActive && (
         <div className="voice-status">
           <span className={`voice-status-dot voice-status-dot-${voice.state}`} />
@@ -439,8 +474,10 @@ export function AwarenessPane({
 
       <InputBar
         onSend={handleSend}
+        onUploadFiles={handleUploadFiles}
         onStop={abortStream}
         disabled={isVoiceActive}
+        uploadDisabled={uploading || isStreaming}
         initialValue={initialDraft}
         isStreaming={isStreaming}
         onHeightChange={handleComposerHeightChange}
@@ -475,6 +512,15 @@ export function AwarenessPane({
       />
     </div>
   );
+}
+
+function uploadMessage(files: UploadedWorkspaceFile[]): string {
+  return [
+    "I uploaded file(s) into the Flight workspace:",
+    ...files.map((file) => `- ${file.name}: ${file.path}`),
+    "",
+    "Use these workspace paths for this website/content-store request.",
+  ].join("\n");
 }
 
 function PromptStatus({

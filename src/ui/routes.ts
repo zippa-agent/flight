@@ -6,6 +6,12 @@ import { normalizeWebEvent, webScopeFromQuery } from "../adapters/web";
 import { requireFlightAgent } from "../platform/supabase";
 import { jsonError } from "../shared/http";
 import { submitDirectWebTurn } from "../turns/submit";
+import {
+  normalizeWorkspaceDirectory,
+  uniqueWorkspacePath,
+  workspacePathInDirectory,
+  writeWorkspaceFile,
+} from "../workspace/files";
 import { APP_CSS, APP_JS } from "./assets";
 
 type AppContext = Context<{ Bindings: Env }>;
@@ -117,6 +123,55 @@ export async function handleUiMessage(c: AppContext): Promise<Response> {
   }
 }
 
+export async function handleUiFileUpload(c: AppContext): Promise<Response> {
+  const agentId = c.req.param("agentId");
+  if (!agentId) return jsonError("Missing agent id.", 400);
+  const auth = await requireFlightAgent(c.req.raw, c.env, agentId);
+  if (auth instanceof Response) return auth;
+
+  let form: FormData;
+  try {
+    form = await c.req.formData();
+  } catch {
+    return jsonError("Expected multipart form data.", 400);
+  }
+
+  const rawPath = stringFormValue(form.get("path"));
+  const directory = normalizeWorkspaceDirectory(rawPath);
+  const fileEntries = form.getAll("files").filter((entry): entry is File => entry instanceof File);
+  if (fileEntries.length === 0) return jsonError("Upload requires at least one file.", 400);
+  if (fileEntries.length > 8) return jsonError("Upload is limited to 8 files at a time.", 400);
+
+  try {
+    const used = new Set<string>();
+    const files = [];
+    for (const file of fileEntries) {
+      const path = uniqueWorkspacePath(workspacePathInDirectory(directory, file.name || "upload"), used);
+      const record = await writeWorkspaceFile({
+        env: c.env,
+        ownerId: agentId,
+        path,
+        content: new Uint8Array(await file.arrayBuffer()),
+        contentType: file.type || undefined,
+      });
+      files.push({
+        path: record.path,
+        size: record.size,
+        contentType: record.contentType || null,
+        name: file.name || record.path.split("/").pop() || "upload",
+      });
+    }
+
+    return c.json({
+      ok: true,
+      runtime: "flight",
+      files,
+    });
+  } catch (error) {
+    return jsonError(error instanceof Error ? error.message : String(error), 400);
+  }
+}
+
 function shellHtml(agentName: string): string {
   const safeTitle = escapeHtml(agentName || "Flight");
   return `<!DOCTYPE html>
@@ -159,4 +214,8 @@ function escapeHtml(value: string): string {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function stringFormValue(value: FormDataEntryValue | null): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }

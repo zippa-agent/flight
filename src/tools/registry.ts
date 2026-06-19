@@ -2,6 +2,7 @@ import type { ToolDefinition } from "@flue/runtime";
 import type { FlightTurnPayload } from "../adapters/types";
 import type { Env } from "../env";
 import { toolPolicyForTurn } from "../agent/contract";
+import { createBrowserContentTool } from "./browser-content";
 import { createDeploySiteTool } from "./deploy-site";
 import { createFullBashTool } from "./full-bash";
 import { createListChannelsTool } from "./list-channels";
@@ -28,6 +29,13 @@ export function resolveTurnTools(input: {
       instanceId: input.instanceId,
     }));
     tools.push(createUploadSiteContentTool({
+      env: input.env,
+      instanceId: input.instanceId,
+    }));
+  }
+
+  if (input.env.CRAWDAD_API_BASE && input.env.CRAWDAD_API_TOKEN) {
+    tools.push(createBrowserContentTool({
       env: input.env,
       instanceId: input.instanceId,
     }));
@@ -70,6 +78,7 @@ export function availableToolNames(input: {
     input.env.FLIGHT_WORKSPACE ? "set_site_binding" : null,
     input.env.FLIGHT_WORKSPACE ? "deploy_site" : null,
     input.env.FLIGHT_WORKSPACE ? "upload_site_content" : null,
+    input.env.CRAWDAD_API_BASE && input.env.CRAWDAD_API_TOKEN ? "browser_content" : null,
     input.env.FLIGHT_WORKSPACE && input.turn?.event.adapter === "email" && policy.allowSendMessage
       ? "list_channels"
       : null,

@@ -20,6 +20,14 @@ test("site tools are available when Flight workspace storage is configured", () 
   ]);
 });
 
+test("browser content tool requires Crawdad browser credentials", () => {
+  assert.equal(availableToolNames({ env, turn: null }).includes("browser_content"), false);
+  assert.deepEqual(availableToolNames({
+    env: { CRAWDAD_API_BASE: "https://crawdad.tinyfat.com", CRAWDAD_API_TOKEN: "token" },
+    turn: null,
+  }), ["browser_content"]);
+});
+
 test("messages-only email turns expose send_message", () => {
   const event = normalizeEmailEvent({
     agentId: "agent-1",
@@ -72,5 +80,5 @@ test("full_bash requires both policy and Crawdad credentials", () => {
   assert.deepEqual(availableToolNames({
     env: { CRAWDAD_API_BASE: "https://crawdad.tinyfat.com", CRAWDAD_API_TOKEN: "token" },
     turn,
-  }), ["send_message", "full_bash"]);
+  }), ["browser_content", "send_message", "full_bash"]);
 });

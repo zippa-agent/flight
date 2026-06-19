@@ -3,8 +3,10 @@ import { getSlashCommand, isKnownSlashCommand, matchSlashCommands, parseSlashCom
 
 interface InputBarProps {
   onSend: (text: string) => void;
+  onUploadFiles?: (files: File[]) => void;
   onStop?: () => void;
   disabled?: boolean;
+  uploadDisabled?: boolean;
   isStreaming?: boolean;
   onHeightChange?: (height: number) => void;
   /** Optional extra button(s) rendered after the send button */
@@ -23,8 +25,10 @@ interface InputBarProps {
 
 export function InputBar({
   onSend,
+  onUploadFiles,
   onStop,
   disabled,
+  uploadDisabled,
   isStreaming,
   onHeightChange,
   extraButtons,
@@ -42,6 +46,7 @@ export function InputBar({
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const slashMatches = slashCommandsEnabled && value.trimStart().startsWith('/') ? matchSlashCommands(value) : [];
   const showSlashMenu = slashCommandsEnabled && value.trimStart().startsWith('/') && slashMatches.length > 0;
 
@@ -141,6 +146,17 @@ export function InputBar({
     requestAnimationFrame(() => textareaRef.current?.focus());
   };
 
+  const handleUploadClick = () => {
+    if (!onUploadFiles || uploadDisabled || disabled) return;
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = () => {
+    const files = Array.from(fileInputRef.current?.files || []);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (files.length > 0) onUploadFiles?.(files);
+  };
+
   useEffect(() => {
     setSlashSelectedIndex(0);
   }, [value]);
@@ -166,6 +182,30 @@ export function InputBar({
         </div>
       )}
       <div className="input-container" ref={containerRef}>
+        {onUploadFiles && (
+          <>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="upload-input"
+              onChange={handleFileChange}
+              tabIndex={-1}
+            />
+            <button
+              className="upload-btn"
+              type="button"
+              onClick={handleUploadClick}
+              disabled={disabled || uploadDisabled}
+              aria-label="Upload files"
+              title="Upload files"
+            >
+              <svg viewBox="0 0 24 24" fill="none">
+                <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </button>
+          </>
+        )}
         <div className="input-main">
           <textarea
             ref={textareaRef}

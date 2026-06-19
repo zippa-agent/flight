@@ -7,6 +7,7 @@ import {
   handleUiAwareness,
   handleUiAwarenessStream,
   handleUiMessage,
+  handleUiFileUpload,
   handleUiSession,
   handleUiShell,
 } from "./ui/routes";
@@ -25,6 +26,7 @@ app.get("/api/agents/:agentId/session", handleUiSession);
 app.get("/api/agents/:agentId/awareness", handleUiAwareness);
 app.get("/api/agents/:agentId/awareness/stream", handleUiAwarenessStream);
 app.post("/api/agents/:agentId/messages", handleUiMessage);
+app.post("/api/agents/:agentId/files", handleUiFileUpload);
 
 app.post("/webhooks/email/:agentId", handleEmailWebhook);
 app.post("/webhooks/flight/:agentId", handleFlightWebhook);

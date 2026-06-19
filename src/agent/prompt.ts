@@ -10,12 +10,13 @@ export function buildAgentInstructions(input: {
   instanceId: string;
   turn: FlightTurnPayload | null;
   policy: ToolPolicy;
+  toolNames?: string[];
   baseInstructions: string;
 }): string {
   const parts = [
     input.baseInstructions.trim(),
     describeInstanceScope(input.instanceId),
-    contractText(input.policy),
+    contractText(input.policy, { toolNames: input.toolNames }),
   ];
 
   if (input.turn) {

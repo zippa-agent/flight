@@ -10,6 +10,13 @@ export interface AgentSettingsSnapshot {
   thinking_level?: string | null;
 }
 
+export interface UploadedWorkspaceFile {
+  name: string;
+  path: string;
+  size: number;
+  contentType: string | null;
+}
+
 const DEFAULT_FETCH_TIMEOUT_MS = 8000;
 
 function currentAgentId(): string {
@@ -84,6 +91,20 @@ export function awarenessStreamUrl(): string {
 
 export function postMessageUrl(): string {
   return scopedApiUrl("/messages");
+}
+
+export async function uploadWorkspaceFiles(files: File[], path?: string): Promise<UploadedWorkspaceFile[]> {
+  const form = new FormData();
+  for (const file of files) form.append("files", file, file.name);
+  if (path) form.set("path", path);
+
+  const resp = await fetchWithTimeout(scopedApiUrl("/files"), {
+    method: "POST",
+    body: form,
+  }, 60000);
+  if (!resp.ok) throw await readError(resp, `Upload failed: ${resp.status}`);
+  const data = await resp.json() as { files?: UploadedWorkspaceFile[] };
+  return data.files || [];
 }
 
 export async function stopActiveMessage(_channelId = "web"): Promise<void> {

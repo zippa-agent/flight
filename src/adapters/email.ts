@@ -32,6 +32,8 @@ export interface EmailPayload {
     filename: string;
     content_type?: string;
     content?: string;
+    workspace_path?: string;
+    size?: number;
   }>;
 }
 
@@ -144,7 +146,21 @@ function buildEmailMessageText(payload: EmailPayload, body: string): string {
   if (payload.allRecipients?.length) parts.push(`Other recipients: ${payload.allRecipients.join(", ")}`);
   if (payload.subject) parts.push(`Subject: ${payload.subject}`);
   if (payload.attachments?.length) {
-    parts.push(`Attachments: ${payload.attachments.map((attachment) => attachment.filename).join(", ")}`);
+    parts.push("Attachments:");
+    for (const attachment of payload.attachments) {
+      const details = [
+        attachment.content_type,
+        typeof attachment.size === "number" ? `${attachment.size} bytes` : undefined,
+      ].filter(Boolean).join(", ");
+      parts.push([
+        `- ${attachment.filename}`,
+        details ? `(${details})` : "",
+        attachment.workspace_path ? `-> ${attachment.workspace_path}` : "(not available as a workspace file)",
+      ].filter(Boolean).join(" "));
+    }
+    if (payload.attachments.some((attachment) => attachment.workspace_path)) {
+      parts.push("Use these /workspace attachment paths directly with file tools or upload_site_content when relevant.");
+    }
   }
   parts.push("", body);
   return parts.join("\n");

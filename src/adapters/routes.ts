@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import type { Env } from "../env";
 import { cleanEmailBody, normalizeEmailAddress, normalizeEmailEvent, type EmailPayload } from "./email";
+import { persistEmailAttachments, withWorkspaceAttachmentPaths } from "./email/attachments";
 import { appendEmailThreadEvent, readRelatedEmailThreadForEvent } from "./email/thread-ledger";
 import { normalizeFlightEvent } from "./flight";
 import { fetchAgentRuntimeRecord } from "../platform/supabase";
@@ -32,6 +33,13 @@ export async function handleEmailWebhook(c: AppContext): Promise<Response> {
 
   try {
     const receivedAt = new Date();
+    const storedAttachments = await persistEmailAttachments({
+      env: c.env,
+      agentId,
+      payload,
+      receivedAt,
+    });
+    payload = withWorkspaceAttachmentPaths(payload, storedAttachments);
     const from = normalizeEmailAddress(payload.from);
     const channelId = `email:${from || payload.from}`;
     const threadRecords = await readRelatedEmailThreadForEvent(c.env, agentId, {

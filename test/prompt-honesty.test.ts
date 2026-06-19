@@ -48,11 +48,32 @@ test("email prompt names send_message only when delivery tool is registered", ()
     instanceId: `${agentId}--agent--d2Vi`,
     turn,
     policy: toolPolicyForTurn(turn),
+    toolNames: ["send_message"],
     baseInstructions: base,
   });
 
   assert.match(text, /send_message/);
   assert.equal(text.includes("full_bash"), false);
+});
+
+test("browser prompt names browser_content only when tool is registered", () => {
+  const textWithoutBrowser = buildAgentInstructions({
+    instanceId: `${agentId}--agent--d2Vi`,
+    turn: null,
+    policy: toolPolicyForTurn(null),
+    toolNames: ["set_site_binding", "deploy_site", "upload_site_content"],
+    baseInstructions: base,
+  });
+  const textWithBrowser = buildAgentInstructions({
+    instanceId: `${agentId}--agent--d2Vi`,
+    turn: null,
+    policy: toolPolicyForTurn(null),
+    toolNames: ["set_site_binding", "deploy_site", "upload_site_content", "browser_content"],
+    baseInstructions: base,
+  });
+
+  assert.equal(textWithoutBrowser.includes("browser_content"), false);
+  assert.match(textWithBrowser, /browser_content/);
 });
 
 test("web adapter instructions avoid unavailable tool names", () => {

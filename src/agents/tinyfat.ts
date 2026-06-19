@@ -10,9 +10,10 @@ import { resolveTinyFatModel } from "../platform/model";
 import { requireBearer } from "../shared/http";
 import { parseFlightTurnPayload } from "../adapters/types";
 import { r2Workspace, workspaceOwnerIdFromInstanceId } from "../sandboxes/r2-workspace";
-import { resolveTurnTools } from "../tools/registry";
+import { availableToolNames, resolveTurnTools } from "../tools/registry";
 import { resolveTurnContext } from "../turns/context";
 import baseInstructions from "./tinyfat.md" with { type: "markdown" };
+import flightWebsiteManager from "../skills/flight-website-manager/SKILL.md" with { type: "skill" };
 
 export const description = "TinyFat Flight scoped relationship agent.";
 
@@ -53,6 +54,7 @@ export default createAgent<unknown, Env>(async ({ id, env, payload }) => {
   }
 
   const workspaceOwnerId = workspaceOwnerIdFromInstanceId(id);
+  const toolNames = availableToolNames({ env, turn });
 
   return {
     model: await resolveTinyFatModel(env, id),
@@ -60,9 +62,11 @@ export default createAgent<unknown, Env>(async ({ id, env, payload }) => {
       instanceId: id,
       turn,
       policy,
+      toolNames,
       baseInstructions,
     }),
     tools: resolveTurnTools({ env, instanceId: id, turn }),
+    skills: [flightWebsiteManager],
     subagents: [relationshipContext, supportClassifier, responseReviewer],
     sandbox: r2Workspace({
       bucket: env.FLIGHT_WORKSPACE,
