@@ -45,7 +45,7 @@ export function contractText(policy: ToolPolicy, input: RuntimeContractInput = {
 
   return [
     "Flight capability contract:",
-    "- Identity: this beta runtime knows the TinyFat agent id and the active relationship scope. It does not yet load encrypted R2 BOOTSTRAP/IDENTITY/MEMORY files.",
+    "- Identity: Flight loads available /workspace BOOTSTRAP, AGENTS, IDENTITY, SOUL, USER, MEMORY, BRIEF, and recent daily memory files for the parent TinyFat agent before each turn.",
     "- Awareness: Flight injects the scoped awareness tail supplied by the runner. Treat it as the durable relationship-local stream.",
     policy.allowSendMessage
       ? "- Delivery: direct browser surfaces receive ordinary assistant text. This messages-only turn has send_message for user-visible delivery."

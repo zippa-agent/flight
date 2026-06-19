@@ -12,10 +12,12 @@ export function buildAgentInstructions(input: {
   policy: ToolPolicy;
   toolNames?: string[];
   baseInstructions: string;
+  workspaceContext?: string;
 }): string {
   const parts = [
     input.baseInstructions.trim(),
     describeInstanceScope(input.instanceId),
+    input.workspaceContext?.trim() || "",
     contractText(input.policy, { toolNames: input.toolNames }),
   ];
 

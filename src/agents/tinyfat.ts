@@ -6,6 +6,7 @@ import {
 import type { Env } from "../env";
 import { buildAgentInstructions } from "../agent/prompt";
 import { toolPolicyForTurn } from "../agent/contract";
+import { loadWorkspaceContext } from "../agent/workspace-context";
 import { resolveTinyFatModel } from "../platform/model";
 import { requireBearer } from "../shared/http";
 import { parseFlightTurnPayload } from "../adapters/types";
@@ -54,6 +55,10 @@ export default createAgent<unknown, Env>(async ({ id, env, payload }) => {
   }
 
   const workspaceOwnerId = workspaceOwnerIdFromInstanceId(id);
+  const workspaceContext = await loadWorkspaceContext({
+    env,
+    ownerId: workspaceOwnerId,
+  });
   const toolNames = availableToolNames({ env, turn });
 
   return {
@@ -64,6 +69,7 @@ export default createAgent<unknown, Env>(async ({ id, env, payload }) => {
       policy,
       toolNames,
       baseInstructions,
+      workspaceContext,
     }),
     tools: resolveTurnTools({ env, instanceId: id, turn }),
     skills: [flightWebsiteManager],
