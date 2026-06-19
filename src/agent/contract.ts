@@ -33,7 +33,7 @@ export function contractText(policy: ToolPolicy, input: RuntimeContractInput = {
     tools.push("upload_site_content: available for uploading /workspace files or inline text into a deployed site's R2 content binding.");
   }
   if (available.has("browser_content")) {
-    tools.push("browser_content: available for loading public http(s) pages through TinyFat's remote Browser Rendering API and returning rendered text and links. It cannot access private networks, localhost, or logged-in browser sessions.");
+    tools.push("browser_content: available for loading public http(s) pages through TinyFat's remote Browser Rendering API and returning rendered text and links. For TinyFat public content-store URLs, it can direct-fetch text as a fallback when browser rendering fails. It cannot access private networks, localhost, or logged-in browser sessions.");
   }
 
   tools.push(policy.allowSendMessage && available.has("send_message")

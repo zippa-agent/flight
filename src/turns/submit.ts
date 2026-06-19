@@ -19,7 +19,14 @@ const MAX_TURN_CONTEXT_BLOCK_CHARS = 4_000;
 export interface SubmitOptions {
   allowFullBash?: boolean;
   detachedMode?: "waitUntil" | "inline";
+  inlineMirrorTimeoutMs?: number;
+  tolerateMirrorErrors?: boolean;
 }
+
+export type DetachedMirrorStatus =
+  | { status: "completed" }
+  | { status: "timed_out" }
+  | { status: "failed"; error: string };
 
 export async function submitDirectWebTurn(
   c: AppContext,
@@ -86,15 +93,32 @@ export async function submitDetachedTurn(
   c: AppContext,
   event: InboundEvent,
   options: SubmitOptions = {},
-): Promise<{ submissionId: string; streamUrl: string; offset: string; acceptedAt: string; instanceId: string }> {
+): Promise<{
+  submissionId: string;
+  streamUrl: string;
+  offset: string;
+  acceptedAt: string;
+  instanceId: string;
+  mirrorStatus?: DetachedMirrorStatus;
+}> {
   const instanceId = flightInstanceId(event);
   const awarenessTail = await fetchAwarenessEntries(c.env, instanceId, { limit: 60 }).then((page) => page.entries);
   await appendInbound(c.env, instanceId, event);
   const turn = buildTurnPayload(event, awarenessTail, options);
   const admission = await admitDirectTurn(c, instanceId, turn);
 
+  let mirrorStatus: DetachedMirrorStatus | undefined;
   if (options.detachedMode === "inline") {
-    await mirrorTurnStreamToAwareness(c, event, admission);
+    const mirrorPromise = mirrorTurnStreamToAwareness(c, event, admission);
+    mirrorStatus = await settleDetachedMirror({
+      promise: mirrorPromise,
+      timeoutMs: options.inlineMirrorTimeoutMs,
+      tolerateErrors: options.tolerateMirrorErrors,
+      waitUntil: (promise) => c.executionCtx.waitUntil(promise),
+      onError: (error) => {
+        console.warn("Flight detached turn stream mirror failed:", error);
+      },
+    });
   } else {
     c.executionCtx.waitUntil(mirrorTurnStreamToAwareness(c, event, admission).catch((error) => {
       console.warn("Flight detached turn stream mirror failed:", error);
@@ -105,7 +129,50 @@ export async function submitDetachedTurn(
     ...admission,
     acceptedAt: new Date().toISOString(),
     instanceId,
+    ...(mirrorStatus ? { mirrorStatus } : {}),
   };
+}
+
+export async function settleDetachedMirror(input: {
+  promise: Promise<void>;
+  timeoutMs?: number;
+  tolerateErrors?: boolean;
+  waitUntil?: (promise: Promise<void>) => void;
+  onError?: (error: unknown) => void;
+}): Promise<DetachedMirrorStatus> {
+  const observed = input.promise.then(
+    () => ({ status: "completed" as const }),
+    (error) => ({ status: "failed" as const, error }),
+  );
+
+  const result = input.timeoutMs && input.timeoutMs > 0
+    ? await Promise.race([observed, mirrorTimeout(input.timeoutMs)])
+    : await observed;
+
+  if (result.status === "timed_out") {
+    input.waitUntil?.(input.promise.catch((error) => {
+      input.onError?.(error);
+    }));
+    return result;
+  }
+
+  if (result.status === "failed") {
+    if (!input.tolerateErrors) throw result.error;
+    input.onError?.(result.error);
+    return { status: "failed", error: errorMessage(result.error) };
+  }
+
+  return result;
+}
+
+function mirrorTimeout(timeoutMs: number): Promise<{ status: "timed_out" }> {
+  return new Promise((resolve) => {
+    setTimeout(() => resolve({ status: "timed_out" }), timeoutMs);
+  });
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function admitDirectTurn(

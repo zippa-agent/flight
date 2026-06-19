@@ -74,6 +74,7 @@ test("browser prompt names browser_content only when tool is registered", () => 
 
   assert.equal(textWithoutBrowser.includes("browser_content"), false);
   assert.match(textWithBrowser, /browser_content/);
+  assert.match(textWithBrowser, /direct-fetch text as a fallback/i);
 });
 
 test("web adapter instructions avoid unavailable tool names", () => {

@@ -10,6 +10,7 @@ import { submitDetachedTurn } from "../turns/submit";
 import { isRecord } from "./types";
 
 type AppContext = Context<{ Bindings: Env }>;
+const EMAIL_INLINE_MIRROR_TIMEOUT_MS = 50_000;
 
 export async function handleEmailWebhook(c: AppContext): Promise<Response> {
   const unauthorized = requireBearer(c, c.env.FLIGHT_WEBHOOK_TOKEN || c.env.FLIGHT_API_TOKEN);
@@ -70,7 +71,11 @@ export async function handleEmailWebhook(c: AppContext): Promise<Response> {
     }).catch((error) => {
       console.warn("Flight email thread ledger inbound append failed:", error);
     });
-    const receipt = await submitDetachedTurn(c, event, { detachedMode: "inline" });
+    const receipt = await submitDetachedTurn(c, event, {
+      detachedMode: "inline",
+      inlineMirrorTimeoutMs: EMAIL_INLINE_MIRROR_TIMEOUT_MS,
+      tolerateMirrorErrors: true,
+    });
     return c.json({
       ok: true,
       runtime: "flight",
