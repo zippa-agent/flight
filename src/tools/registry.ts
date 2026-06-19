@@ -42,7 +42,7 @@ export function resolveTurnTools(input: {
   }
 
   if (input.turn && policy.allowSendMessage) {
-    if (input.env.FLIGHT_WORKSPACE && input.turn.event.adapter === "email") {
+    if (input.env.FLIGHT_WORKSPACE && supportsConversationTools(input.turn.event.adapter)) {
       tools.push(createListChannelsTool({
         env: input.env,
         agentId: input.turn.event.agentId,
@@ -79,13 +79,17 @@ export function availableToolNames(input: {
     input.env.FLIGHT_WORKSPACE ? "deploy_site" : null,
     input.env.FLIGHT_WORKSPACE ? "upload_site_content" : null,
     input.env.CRAWDAD_API_BASE && input.env.CRAWDAD_API_TOKEN ? "browser_content" : null,
-    input.env.FLIGHT_WORKSPACE && input.turn?.event.adapter === "email" && policy.allowSendMessage
+    input.env.FLIGHT_WORKSPACE && supportsConversationTools(input.turn?.event.adapter) && policy.allowSendMessage
       ? "list_channels"
       : null,
-    input.env.FLIGHT_WORKSPACE && input.turn?.event.adapter === "email" && policy.allowSendMessage
+    input.env.FLIGHT_WORKSPACE && supportsConversationTools(input.turn?.event.adapter) && policy.allowSendMessage
       ? "read_thread"
       : null,
     policy.allowSendMessage ? "send_message" : null,
     policy.allowFullBash && input.env.CRAWDAD_API_BASE && input.env.CRAWDAD_API_TOKEN ? "full_bash" : null,
   ].filter((name): name is string => !!name);
+}
+
+function supportsConversationTools(adapter: string | undefined): boolean {
+  return adapter === "email" || adapter === "slack";
 }

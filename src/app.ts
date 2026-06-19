@@ -1,7 +1,7 @@
 import { flue } from "@flue/runtime/routing";
 import { Hono } from "hono";
 import type { Env } from "./env";
-import { handleEmailWebhook, handleFlightWebhook } from "./adapters/routes";
+import { handleEmailWebhook, handleFlightWebhook, handleSlackWebhook } from "./adapters/routes";
 import {
   handleUiAsset,
   handleUiAwareness,
@@ -29,6 +29,7 @@ app.post("/api/agents/:agentId/messages", handleUiMessage);
 app.post("/api/agents/:agentId/files", handleUiFileUpload);
 
 app.post("/webhooks/email/:agentId", handleEmailWebhook);
+app.post("/webhooks/slack/:agentId", handleSlackWebhook);
 app.post("/webhooks/flight/:agentId", handleFlightWebhook);
 app.post("/flight/webhooks/:agentId", handleFlightWebhook);
 

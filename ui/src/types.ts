@@ -97,7 +97,12 @@ export function formatChannel(channel: string): { label: string; type: string } 
   if (channel === 'voice' || channel === 'web-voice') return { label: 'voice', type: 'voice' };
   if (channel === 'web' || channel === 'web-user') return { label: 'web', type: 'web' };
   if (channel.startsWith('email-')) return { label: 'email', type: 'email' };
+  if (channel.startsWith('email:')) return { label: 'email', type: 'email' };
   if (channel.startsWith('telegram:') || /^-?\d+$/.test(channel)) return { label: channel.replace('telegram:', ''), type: 'telegram' };
+  if (channel.startsWith('slack:')) {
+    const label = channel.slice('slack:'.length);
+    return { label: label.startsWith('#') ? label : `#${label}`, type: 'slack' };
+  }
   if (channel === 'DM:Alex' || channel.startsWith('DM:')) return { label: channel, type: 'telegram' };
   if (/^[CDG]/.test(channel)) return { label: `#${channel}`, type: 'slack' };
   if (['general', 'zip-chat', 'random'].includes(channel) || channel.includes('-')) {

@@ -4,6 +4,8 @@ import { cleanEmailBody, normalizeEmailAddress, normalizeEmailEvent, type EmailP
 import { persistEmailAttachments, withWorkspaceAttachmentPaths } from "./email/attachments";
 import { appendEmailThreadEvent, readRelatedEmailThreadForEvent } from "./email/thread-ledger";
 import { normalizeFlightEvent } from "./flight";
+import { normalizeSlackEvent, type SlackBridgePayload } from "./slack";
+import { appendSlackThreadEvent } from "./slack/thread-ledger";
 import { fetchAgentRuntimeRecord } from "../platform/supabase";
 import { jsonError, requireBearer } from "../shared/http";
 import { submitDetachedTurn } from "../turns/submit";
@@ -11,6 +13,7 @@ import { isRecord } from "./types";
 
 type AppContext = Context<{ Bindings: Env }>;
 const EMAIL_INLINE_MIRROR_TIMEOUT_MS = 50_000;
+const SLACK_INLINE_MIRROR_TIMEOUT_MS = 50_000;
 
 export async function handleEmailWebhook(c: AppContext): Promise<Response> {
   const unauthorized = requireBearer(c, c.env.FLIGHT_WEBHOOK_TOKEN || c.env.FLIGHT_API_TOKEN);
@@ -116,6 +119,74 @@ export async function handleFlightWebhook(c: AppContext): Promise<Response> {
       ok: true,
       runtime: "flight",
       adapter: event.adapter,
+      agentId,
+      ...receipt,
+    }, 202);
+  } catch (error) {
+    return jsonError(error instanceof Error ? error.message : String(error), 400);
+  }
+}
+
+export async function handleSlackWebhook(c: AppContext): Promise<Response> {
+  const unauthorized = requireBearer(c, c.env.FLIGHT_WEBHOOK_TOKEN || c.env.FLIGHT_API_TOKEN);
+  if (unauthorized) return unauthorized;
+
+  const agentId = c.req.param("agentId");
+  if (!agentId) return jsonError("Missing agent id.", 400);
+
+  let payload: SlackBridgePayload;
+  try {
+    payload = await c.req.json() as SlackBridgePayload;
+  } catch {
+    return jsonError("Expected JSON body.", 400);
+  }
+
+  const record = await fetchAgentRuntimeRecord(agentId, c.env);
+  if (!record || record.runtime !== "flight" || record.enabled === false) {
+    return jsonError("Flight agent not found.", 404);
+  }
+
+  try {
+    const normalized = normalizeSlackEvent({
+      agentId,
+      payload,
+    });
+    if (normalized.status === "skipped") {
+      return c.json({
+        ok: true,
+        runtime: "flight",
+        adapter: "slack",
+        agentId,
+        skipped: true,
+        reason: normalized.reason,
+      }, 202);
+    }
+
+    await appendSlackThreadEvent(c.env, agentId, {
+      type: "inbound",
+      at: normalized.event.delivery.receivedAt,
+      channelId: normalized.slackEvent.channel,
+      channelName: normalized.slackEvent.channelName,
+      threadTs: normalized.slackEvent.threadTs,
+      messageTs: normalized.slackEvent.messageTs,
+      userId: normalized.slackEvent.userId,
+      userName: normalized.slackEvent.userName,
+      body: normalized.slackEvent.text || normalized.slackEvent.rawText,
+      directlyAddressed: normalized.slackEvent.directlyAddressed,
+      sourceEventType: normalized.slackEvent.sourceEventType,
+    }).catch((error) => {
+      console.warn("Flight Slack thread ledger inbound append failed:", error);
+    });
+
+    const receipt = await submitDetachedTurn(c, normalized.event, {
+      detachedMode: "inline",
+      inlineMirrorTimeoutMs: SLACK_INLINE_MIRROR_TIMEOUT_MS,
+      tolerateMirrorErrors: true,
+    });
+    return c.json({
+      ok: true,
+      runtime: "flight",
+      adapter: "slack",
       agentId,
       ...receipt,
     }, 202);

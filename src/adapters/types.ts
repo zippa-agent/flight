@@ -75,13 +75,23 @@ export interface EmailReplyQuote {
   sentAt?: string;
 }
 
+export interface SlackReplyTarget {
+  kind: "slack";
+  channel: string;
+  threadTs?: string;
+  botToken: string;
+  botUserId?: string;
+  teamId?: string;
+  threadTarget: string;
+}
+
 export interface WebhookReplyTarget {
   kind: "webhook";
   url: string;
   token?: string;
 }
 
-export type ReplyTarget = EmailReplyTarget | WebhookReplyTarget;
+export type ReplyTarget = EmailReplyTarget | SlackReplyTarget | WebhookReplyTarget;
 
 export interface InboundEvent {
   version: "flight.inbound.v1";

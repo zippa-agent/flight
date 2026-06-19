@@ -1,6 +1,6 @@
 import { defineTool, type ToolDefinition } from "@flue/runtime";
 import * as v from "valibot";
-import type { EmailReplyTarget, FlightTurnPayload } from "../adapters/types";
+import type { EmailReplyTarget, FlightTurnPayload, SlackReplyTarget } from "../adapters/types";
 import type { Env } from "../env";
 import { buildReplyThreadHeaders, composeEmailReplyBody, normalizeEmailAddress } from "../adapters/email";
 import {
@@ -9,6 +9,12 @@ import {
   parseEmailThreadTarget,
   readEmailThreadById,
 } from "../adapters/email/thread-ledger";
+import { markdownToSlackMrkdwn } from "../adapters/slack/format";
+import {
+  appendSlackThreadEvent,
+  parseSlackThreadTarget,
+  slackThreadTarget,
+} from "../adapters/slack/thread-ledger";
 import { appendAwarenessEntry, assistantAwarenessEntry } from "../awareness/store";
 
 const SendMessageInput = v.object({
@@ -25,7 +31,7 @@ export function createSendMessageTool(input: {
   return defineTool({
     name: "send_message",
     description:
-      "Send the user-visible reply for the active messages-only surface. For email, provide only the human-readable email body; Flight supplies authorized recipients, thread headers, and native-style quoted history. Optional target accepts email-thread:<id> for a known email thread.",
+      "Send the user-visible reply for the active messages-only surface. For email, provide only the human-readable email body; Flight supplies authorized recipients, thread headers, and native-style quoted history. For Slack, provide the Slack message body; Flight posts it with Slack mrkdwn formatting. Optional target accepts email-thread:<id>, slack:<channel_id>:<thread_ts>, slack:<channel_id>, or a raw Slack channel/DM/group id when the active turn has that provider context.",
     parameters: SendMessageInput,
     execute: async ({ body, subject, target: requestedTarget }, signal) => {
       const target = await resolveReplyTarget({
@@ -77,6 +83,39 @@ export function createSendMessageTool(input: {
         return `Sent email to ${target.to.join(", ")}${result.messageId ? ` (message id ${result.messageId})` : ""}.`;
       }
 
+      if (target.kind === "slack") {
+        const result = await sendSlackMessage(target, body, signal);
+        const timestamp = new Date().toISOString();
+        await appendSlackThreadEvent(input.env, input.turn.event.agentId, {
+          type: "outbound",
+          at: timestamp,
+          channelId: result.channel || target.channel,
+          threadTs: target.threadTs,
+          messageTs: result.ts,
+          userId: target.botUserId || "agent",
+          userName: "agent",
+          body,
+          sourceEventType: "flight_send_message",
+        }).catch((error) => {
+          console.warn("Flight Slack thread ledger outbound append failed:", error);
+        });
+        await appendAwarenessEntry(input.env, input.instanceId, assistantAwarenessEntry({
+          id: `delivery-${input.turn.event.delivery.id}-${result.ts || crypto.randomUUID()}`,
+          timestamp,
+          adapter: input.turn.event.adapter,
+          channel: `slack:${result.channel || target.channel}`,
+          text: body,
+          content: [{ type: "text", text: body }],
+        })).catch((error) => {
+          console.warn("Flight Slack send_message awareness append failed:", error);
+        });
+
+        const destination = target.threadTs
+          ? `${target.channel} thread ${target.threadTs}`
+          : target.channel;
+        return `Sent Slack message to ${destination}${result.ts ? ` (ts ${result.ts})` : ""}.`;
+      }
+
       if (target.kind === "webhook") {
         const response = await fetch(target.url, {
           method: "POST",
@@ -120,11 +159,24 @@ async function resolveReplyTarget(input: {
   const activeTarget = input.turn.event.replyTarget;
   if (!input.requestedTarget?.trim()) return activeTarget;
 
-  const parsed = parseEmailThreadTarget(input.requestedTarget);
-  if (!parsed) {
-    throw new Error(`Unsupported send_message target "${input.requestedTarget}". Expected email-thread:<id>.`);
-  }
+  const parsedEmail = parseEmailThreadTarget(input.requestedTarget);
+  if (parsedEmail) return resolveEmailTarget(input, parsedEmail);
 
+  const parsedSlack = parseSlackThreadTarget(input.requestedTarget);
+  if (parsedSlack) return resolveSlackTarget(input.turn, parsedSlack);
+
+  throw new Error(`Unsupported send_message target "${input.requestedTarget}". Expected email-thread:<id>, slack:<channel_id>:<thread_ts>, slack:<channel_id>, or a raw Slack channel/DM/group id.`);
+}
+
+async function resolveEmailTarget(
+  input: {
+    env: Env;
+    turn: FlightTurnPayload;
+    requestedTarget?: string;
+  },
+  parsed: { threadId: string; inputTarget: string },
+): Promise<EmailReplyTarget> {
+  const activeTarget = input.turn.event.replyTarget;
   if (activeTarget?.kind === "email" && activeTarget.threadTarget === parsed.inputTarget) {
     return activeTarget;
   }
@@ -170,6 +222,26 @@ async function resolveReplyTarget(input: {
   } satisfies EmailReplyTarget;
 }
 
+function resolveSlackTarget(
+  turn: FlightTurnPayload,
+  parsed: { channel: string; threadTs?: string; inputTarget: string },
+): SlackReplyTarget {
+  const activeTarget = turn.event.replyTarget;
+  if (activeTarget?.kind !== "slack") {
+    throw new Error("Slack targets require an active Slack reply context.");
+  }
+
+  return {
+    kind: "slack",
+    channel: parsed.channel,
+    threadTs: parsed.threadTs,
+    botToken: activeTarget.botToken,
+    botUserId: activeTarget.botUserId,
+    teamId: activeTarget.teamId,
+    threadTarget: slackThreadTarget(parsed.channel, parsed.threadTs),
+  } satisfies SlackReplyTarget;
+}
+
 function replySubject(subject: string | undefined): string {
   const trimmed = subject?.trim() || "(no subject)";
   return /^re:/iu.test(trimmed) ? trimmed : `Re: ${trimmed}`;
@@ -197,4 +269,35 @@ async function sendEmail(
   }
   const parsed = text ? JSON.parse(text) as { messageId?: string; id?: string } : {};
   return { messageId: parsed.messageId || parsed.id };
+}
+
+async function sendSlackMessage(
+  target: SlackReplyTarget,
+  body: string,
+  signal?: AbortSignal,
+): Promise<{ channel?: string; ts?: string }> {
+  const response = await fetch("https://slack.com/api/chat.postMessage", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${target.botToken}`,
+      "Content-Type": "application/json; charset=utf-8",
+    },
+    body: JSON.stringify({
+      channel: target.channel,
+      text: markdownToSlackMrkdwn(body),
+      ...(target.threadTs ? { thread_ts: target.threadTs } : {}),
+      unfurl_links: false,
+      unfurl_media: false,
+    }),
+    signal,
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`Slack send failed (${response.status}): ${text}`);
+  }
+  const parsed = text ? JSON.parse(text) as { ok?: boolean; error?: string; channel?: string; ts?: string } : {};
+  if (parsed.ok === false) {
+    throw new Error(`Slack send failed: ${parsed.error || "unknown_error"}`);
+  }
+  return { channel: parsed.channel, ts: parsed.ts };
 }

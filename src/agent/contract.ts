@@ -35,9 +35,15 @@ export function contractText(policy: ToolPolicy, input: RuntimeContractInput = {
   if (available.has("browser_content")) {
     tools.push("browser_content: available for loading public http(s) pages through TinyFat's remote Browser Rendering API and returning rendered text and links. For TinyFat public content-store URLs, it can direct-fetch text as a fallback when browser rendering fails. It cannot access private networks, localhost, or logged-in browser sessions.");
   }
+  if (available.has("list_channels")) {
+    tools.push("list_channels: available for messages-only turns with durable conversation ledgers. It lists exact email-thread:<id> and slack:<channel_id>:<thread_ts> targets when known.");
+  }
+  if (available.has("read_thread")) {
+    tools.push("read_thread: available for reading a known email-thread:<id>, slack:<channel_id>:<thread_ts>, or slack:<channel_id> target before choosing where to send a reply.");
+  }
 
   tools.push(policy.allowSendMessage && available.has("send_message")
-    ? "send_message: available for this turn. It is the only user-visible delivery path on this messages-only surface."
+    ? "send_message: available for this turn. It is the only user-visible delivery path on this messages-only surface. Email targets use email-thread:<id>; Slack thread targets use slack:<channel_id>:<thread_ts>, and top-level Slack sends use slack:<channel_id>."
     : "No provider delivery tool is available for this turn.");
   tools.push(policy.allowFullBash && available.has("full_bash")
     ? "full_bash: available for this turn. It reaches the configured Crawdad-backed host container tool."
