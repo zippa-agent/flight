@@ -78,9 +78,10 @@ domain first. Prefer this flow:
 3. Call `domain_onboard_prepare` only for the confirmed domain.
 4. Share the returned nameserver instructions.
 5. Use `domain_onboard_status` after delegation.
-6. Use `dns_records_list`, `dns_snapshot_create`, `dns_change_plan`, and
-   `dns_change_apply` for managed DNS changes, respecting any approval/risk
-   status returned by the broker.
+6. Use `dns_records_list`, `dns_snapshot_create`, `dns_change_plan`,
+   `dns_change_approve`, and `dns_change_apply` for managed DNS changes.
+   Call `dns_change_approve` only after explicit user confirmation of the
+   exact high-risk change set.
 
 ## Replies
 

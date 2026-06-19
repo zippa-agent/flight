@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { dnsChangePlan, prepareDomainOnboarding } from "../src/tools/domains";
+import { dnsChangeApprove, dnsChangePlan, prepareDomainOnboarding } from "../src/tools/domains";
 
 const agentId = "6884e994-60f4-4395-8008-38f73989c34d";
 const instanceId = `${agentId}--agent--d2Vi`;
@@ -77,4 +77,35 @@ test("dns_change_plan sends a structured broker request", async () => {
     changes: [{ op: "create", record: { type: "CNAME", name: "www", content: "target.example" } }],
   });
   assert.deepEqual(result, { ok: true, changeSet: { id: "change-1", risk: "low" } });
+});
+
+test("dns_change_approve records explicit approval with the broker", async () => {
+  const calls: Array<{ url: string; body?: any }> = [];
+
+  const result = await dnsChangeApprove({
+    env: {
+      SUPABASE_URL: "https://supabase.test",
+      SUPABASE_SERVICE_ROLE_KEY: "service_role",
+      DOMAIN_BROKER_URL: "https://domains.test",
+    },
+    instanceId,
+    request: {
+      domain: "Example.COM",
+      change_set_id: "change-1",
+      approval_note: "Alex explicitly confirmed applying the tinyfat.blog DNS alias plan.",
+    },
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      if (String(url).startsWith("https://supabase.test/rest/v1/agents")) {
+        return Response.json([{ id: agentId, tools_token: "fat_tools_test" }]);
+      }
+      return Response.json({ ok: true, changeSet: { id: "change-1", status: "planned" } });
+    },
+  }) as Record<string, unknown>;
+
+  assert.equal(calls.at(-1)?.url, "https://domains.test/domains/example.com/changes/change-1/approve");
+  assert.deepEqual(calls.at(-1)?.body, {
+    approvalNote: "Alex explicitly confirmed applying the tinyfat.blog DNS alias plan.",
+  });
+  assert.deepEqual(result, { ok: true, changeSet: { id: "change-1", status: "planned" } });
 });

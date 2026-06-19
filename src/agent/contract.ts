@@ -53,7 +53,7 @@ export function contractText(policy: ToolPolicy, input: RuntimeContractInput = {
     tools.push("browser_session: available for short-lived persistent public-browser sessions with start/status/nav/content/evaluate/screenshot/pdf/close actions. Binary artifacts are saved under /workspace/browser-artifacts.");
   }
   if (available.has("domain_list")) {
-    tools.push("Domain/DNS tools: available for managed-domain listing, onboarding preparation, status, record listing, snapshots, change planning/apply, and export. Use search_tools with category \"domain\" for exact names. Never pick or onboard a domain without explicit user confirmation.");
+    tools.push("Domain/DNS tools: available for managed-domain listing, onboarding preparation, status, record listing, snapshots, change planning, explicit approval, apply, and export. Use search_tools with category \"domain\" for exact names. Never pick, onboard, or approve high-risk DNS changes without explicit user confirmation.");
   }
   if (available.has("list_channels")) {
     tools.push("list_channels: available for messages-only turns with durable conversation ledgers. It lists exact email-thread:<id> and slack:<channel_id>:<thread_ts> targets when known.");

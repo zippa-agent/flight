@@ -23,10 +23,17 @@ const DnsChangeApplyInput = v.object({
   change_set_id: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
 });
 
+const DnsChangeApproveInput = v.object({
+  domain: v.pipe(v.string(), v.minLength(3), v.maxLength(253)),
+  change_set_id: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
+  approval_note: v.pipe(v.string(), v.minLength(1), v.maxLength(1000)),
+});
+
 type DomainInputValue = v.InferOutput<typeof DomainInput>;
 type DomainOnboardPrepareInputValue = v.InferOutput<typeof DomainOnboardPrepareInput>;
 type DnsChangePlanInputValue = v.InferOutput<typeof DnsChangePlanInput>;
 type DnsChangeApplyInputValue = v.InferOutput<typeof DnsChangeApplyInput>;
+type DnsChangeApproveInputValue = v.InferOutput<typeof DnsChangeApproveInput>;
 
 export const DEFAULT_DOMAIN_BROKER_URL = "https://domains.tinyfat.com";
 
@@ -105,9 +112,20 @@ export function createDomainTools(input: {
     defineTool({
       name: "dns_change_apply",
       description:
-        "Apply a previously planned low-risk DNS change set. High-risk mail/apex/delete changes should fail until approved outside the agent path.",
+        "Apply a previously planned DNS change set. High-risk mail/apex/delete changes must be explicitly approved first with dns_change_approve.",
       parameters: DnsChangeApplyInput,
       execute: async (args, signal) => brokerJsonResult(await dnsChangeApply({
+        ...input,
+        request: args,
+        signal,
+      })),
+    }),
+    defineTool({
+      name: "dns_change_approve",
+      description:
+        "Approve a high-risk DNS change set only after the user explicitly confirms the exact change. This records approval with the broker so dns_change_apply can proceed.",
+      parameters: DnsChangeApproveInput,
+      execute: async (args, signal) => brokerJsonResult(await dnsChangeApprove({
         ...input,
         request: args,
         signal,
@@ -216,6 +234,23 @@ export async function dnsChangeApply(input: {
     ...input,
     path: `/domains/${encodeURIComponent(normalizeDomain(input.request.domain))}/changes/${encodeURIComponent(input.request.change_set_id)}/apply`,
     method: "POST",
+  });
+}
+
+export async function dnsChangeApprove(input: {
+  env: Env;
+  instanceId: string;
+  request: DnsChangeApproveInputValue;
+  signal?: AbortSignal;
+  fetchImpl?: typeof fetch;
+}): Promise<unknown> {
+  return domainBrokerRequest({
+    ...input,
+    path: `/domains/${encodeURIComponent(normalizeDomain(input.request.domain))}/changes/${encodeURIComponent(input.request.change_set_id)}/approve`,
+    method: "POST",
+    body: {
+      approvalNote: input.request.approval_note,
+    },
   });
 }
 

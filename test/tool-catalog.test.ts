@@ -44,6 +44,7 @@ test("registry resolves catalog-backed browser and domain tools", () => {
     "browser_session",
     "deploy_site",
     "dns_change_apply",
+    "dns_change_approve",
     "dns_change_plan",
     "dns_records_list",
     "dns_snapshot_create",

@@ -289,7 +289,8 @@ function createDomainCatalogEntries(input: ToolCatalogInput, available: boolean)
     dns_records_list: "List DNS records for a TinyFat-managed domain.",
     dns_snapshot_create: "Create a DNS snapshot before a risky change or manual checkpoint.",
     dns_change_plan: "Plan DNS record changes and receive risk/approval status.",
-    dns_change_apply: "Apply a previously planned low-risk DNS change set.",
+    dns_change_approve: "Approve a high-risk DNS change set after explicit user confirmation.",
+    dns_change_apply: "Apply a previously planned and, if needed, approved DNS change set.",
     domain_export: "Export the current Cloudflare zone file for portability or exit.",
   };
   const risks: Record<string, ToolCatalogEntry["risk"]> = {
@@ -300,6 +301,7 @@ function createDomainCatalogEntries(input: ToolCatalogInput, available: boolean)
     domain_onboard_prepare: "external-change",
     dns_snapshot_create: "external-change",
     dns_change_plan: "external-change",
+    dns_change_approve: "external-change",
     dns_change_apply: "external-change",
   };
   return tools.map((tool) => ({
