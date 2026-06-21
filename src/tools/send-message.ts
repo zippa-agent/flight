@@ -1,6 +1,6 @@
 import { defineTool, type ToolDefinition } from "@flue/runtime";
 import * as v from "valibot";
-import type { EmailReplyTarget, FlightTurnPayload, SlackReplyTarget } from "../adapters/types";
+import type { EmailReplyTarget, DiscordReplyTarget, FlightTurnPayload, SlackReplyTarget, TelegramReplyTarget } from "../adapters/types";
 import type { Env } from "../env";
 import { buildReplyThreadHeaders, composeEmailReplyBody, normalizeEmailAddress } from "../adapters/email";
 import {
@@ -15,6 +15,18 @@ import {
   parseSlackThreadTarget,
   slackThreadTarget,
 } from "../adapters/slack/thread-ledger";
+import { markdownToDiscordMarkdown, chunkDiscordMessage } from "../adapters/discord/format";
+import {
+  appendDiscordThreadEvent,
+  parseDiscordThreadTarget,
+  discordThreadTarget,
+} from "../adapters/discord/thread-ledger";
+import { markdownToTelegramHtml, chunkTelegramMessage } from "../adapters/telegram/format";
+import {
+  appendTelegramThreadEvent,
+  parseTelegramThreadTarget,
+  telegramThreadTarget,
+} from "../adapters/telegram/thread-ledger";
 import { appendAwarenessEntry, assistantAwarenessEntry } from "../awareness/store";
 
 const SendMessageInput = v.object({
@@ -31,7 +43,7 @@ export function createSendMessageTool(input: {
   return defineTool({
     name: "send_message",
     description:
-      "Send the user-visible reply for the active messages-only surface. For email, provide only the human-readable email body; Flight supplies authorized recipients, thread headers, and native-style quoted history. For Slack, provide the Slack message body; Flight posts it with Slack mrkdwn formatting. Optional target accepts email-thread:<id>, slack:<channel_id>:<thread_ts>, slack:<channel_id>, or a raw Slack channel/DM/group id when the active turn has that provider context.",
+      "Send the user-visible reply for the active messages-only surface. For email, provide only the human-readable email body; Flight supplies authorized recipients, thread headers, and native-style quoted history. For Slack, provide the Slack message body; Flight posts it with Slack mrkdwn formatting. For Discord, provide the message body; Flight posts it with Discord markdown formatting, splitting messages over 2000 chars. For Telegram, provide the message body; Flight posts it with Telegram HTML formatting, splitting messages over 4096 chars. Optional target accepts email-thread:<id>, slack:<channel_id>:<thread_ts>, slack:<channel_id>, discord:<channel_id>:<thread_id>, discord:<channel_id>, telegram:<chat_id>:<reply_to_message_id>, telegram:<chat_id>, or a raw Slack/Discord channel id when the active turn has that provider context.",
     parameters: SendMessageInput,
     execute: async ({ body, subject, target: requestedTarget }, signal) => {
       const target = await resolveReplyTarget({
@@ -117,6 +129,77 @@ export function createSendMessageTool(input: {
         return `Sent Slack message to ${destination}${result.ts ? ` (ts ${result.ts})` : ""}.`;
       }
 
+      if (target.kind === "discord") {
+        const results = await sendDiscordMessage(target, body, signal);
+        const timestamp = new Date().toISOString();
+        const lastMessageId = results[results.length - 1]?.id;
+        await appendDiscordThreadEvent(input.env, input.turn.event.agentId, {
+          type: "outbound",
+          at: timestamp,
+          channelId: target.channel,
+          channelName: target.channelName,
+          threadId: target.threadId,
+          messageId: lastMessageId,
+          userId: target.botUserId || "agent",
+          userName: "agent",
+          body,
+          sourceEventType: "flight_send_message",
+        }).catch((error) => {
+          console.warn("Flight Discord thread ledger outbound append failed:", error);
+        });
+        await appendAwarenessEntry(input.env, input.instanceId, assistantAwarenessEntry({
+          id: `delivery-${input.turn.event.delivery.id}-${lastMessageId || crypto.randomUUID()}`,
+          timestamp,
+          adapter: input.turn.event.adapter,
+          channel: input.turn.event.scope.channelId || `discord:${target.channelName ? `#${target.channelName}` : target.channel}`,
+          text: body,
+          content: [{ type: "text", text: body }],
+        })).catch((error) => {
+          console.warn("Flight Discord send_message awareness append failed:", error);
+        });
+
+        const destination = target.threadId
+          ? `${target.channel} thread ${target.threadId}`
+          : target.channel;
+        return `Sent Discord message to ${destination}${lastMessageId ? ` (message id ${lastMessageId})` : ""}.`;
+      }
+
+      if (target.kind === "telegram") {
+        const results = await sendTelegramMessage(target, body, signal);
+        const timestamp = new Date().toISOString();
+        const lastMessageId = results[results.length - 1]?.messageId;
+        await appendTelegramThreadEvent(input.env, input.turn.event.agentId, {
+          type: "outbound",
+          at: timestamp,
+          chatId: target.chatId,
+          chatName: target.chatName,
+          chatType: target.chatType,
+          messageId: lastMessageId,
+          replyToMessageId: target.replyToMessageId,
+          userId: target.botUserId || "agent",
+          userName: "agent",
+          body,
+          sourceEventType: "flight_send_message",
+        }).catch((error) => {
+          console.warn("Flight Telegram thread ledger outbound append failed:", error);
+        });
+        await appendAwarenessEntry(input.env, input.instanceId, assistantAwarenessEntry({
+          id: `delivery-${input.turn.event.delivery.id}-${lastMessageId || crypto.randomUUID()}`,
+          timestamp,
+          adapter: input.turn.event.adapter,
+          channel: input.turn.event.scope.channelId || `telegram:${target.chatName || target.chatId}`,
+          text: body,
+          content: [{ type: "text", text: body }],
+        })).catch((error) => {
+          console.warn("Flight Telegram send_message awareness append failed:", error);
+        });
+
+        const destination = target.replyToMessageId
+          ? `${target.chatId} (reply to ${target.replyToMessageId})`
+          : target.chatId;
+        return `Sent Telegram message to ${destination}${lastMessageId ? ` (message id ${lastMessageId})` : ""}.`;
+      }
+
       if (target.kind === "webhook") {
         const response = await fetch(target.url, {
           method: "POST",
@@ -166,7 +249,13 @@ async function resolveReplyTarget(input: {
   const parsedSlack = parseSlackThreadTarget(input.requestedTarget);
   if (parsedSlack) return resolveSlackTarget(input.turn, parsedSlack);
 
-  throw new Error(`Unsupported send_message target "${input.requestedTarget}". Expected email-thread:<id>, slack:<channel_id>:<thread_ts>, slack:<channel_id>, or a raw Slack channel/DM/group id.`);
+  const parsedDiscord = parseDiscordThreadTarget(input.requestedTarget);
+  if (parsedDiscord) return resolveDiscordTarget(input.turn, parsedDiscord);
+
+  const parsedTelegram = parseTelegramThreadTarget(input.requestedTarget);
+  if (parsedTelegram) return resolveTelegramTarget(input.turn, parsedTelegram);
+
+  throw new Error(`Unsupported send_message target "${input.requestedTarget}". Expected email-thread:<id>, slack:<channel_id>:<thread_ts>, slack:<channel_id>, discord:<channel_id>:<thread_id>, discord:<channel_id>, telegram:<chat_id>:<reply_to_message_id>, telegram:<chat_id>, or a raw Slack/Discord channel id.`);
 }
 
 async function resolveEmailTarget(
@@ -244,6 +333,49 @@ function resolveSlackTarget(
   } satisfies SlackReplyTarget;
 }
 
+function resolveDiscordTarget(
+  turn: FlightTurnPayload,
+  parsed: { channel: string; threadId?: string; inputTarget: string },
+): DiscordReplyTarget {
+  const activeTarget = turn.event.replyTarget;
+  if (activeTarget?.kind !== "discord") {
+    throw new Error("Discord targets require an active Discord reply context.");
+  }
+
+  return {
+    kind: "discord",
+    channel: parsed.channel,
+    channelName: activeTarget.channelName,
+    threadId: parsed.threadId,
+    botToken: activeTarget.botToken,
+    botUserId: activeTarget.botUserId,
+    guildId: activeTarget.guildId,
+    threadTarget: discordThreadTarget(parsed.channel, parsed.threadId),
+  } satisfies DiscordReplyTarget;
+}
+
+function resolveTelegramTarget(
+  turn: FlightTurnPayload,
+  parsed: { chatId: string; replyToMessageId?: string; inputTarget: string },
+): TelegramReplyTarget {
+  const activeTarget = turn.event.replyTarget;
+  if (activeTarget?.kind !== "telegram") {
+    throw new Error("Telegram targets require an active Telegram reply context.");
+  }
+
+  return {
+    kind: "telegram",
+    chatId: parsed.chatId,
+    chatType: activeTarget.chatType,
+    chatName: activeTarget.chatName,
+    messageId: activeTarget.messageId,
+    replyToMessageId: parsed.replyToMessageId,
+    botToken: activeTarget.botToken,
+    botUserId: activeTarget.botUserId,
+    threadTarget: telegramThreadTarget(parsed.chatId, parsed.replyToMessageId),
+  } satisfies TelegramReplyTarget;
+}
+
 function replySubject(subject: string | undefined): string {
   const trimmed = subject?.trim() || "(no subject)";
   return /^re:/iu.test(trimmed) ? trimmed : `Re: ${trimmed}`;
@@ -302,4 +434,82 @@ async function sendSlackMessage(
     throw new Error(`Slack send failed: ${parsed.error || "unknown_error"}`);
   }
   return { channel: parsed.channel, ts: parsed.ts };
+}
+
+const DISCORD_API = "https://discord.com/api/v10";
+
+async function sendDiscordMessage(
+  target: DiscordReplyTarget,
+  body: string,
+  signal?: AbortSignal,
+): Promise<Array<{ id?: string }>> {
+  const chunks = chunkDiscordMessage(markdownToDiscordMarkdown(body), 2000);
+  const results: Array<{ id?: string }> = [];
+
+  for (const chunk of chunks) {
+    const response = await fetch(`${DISCORD_API}/channels/${target.channel}/messages`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bot ${target.botToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        content: chunk,
+        ...(target.threadId ? { message_reference: { message_id: target.threadId, channel_id: target.channel } } : {}),
+      }),
+      signal,
+    });
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(`Discord send failed (${response.status}): ${text}`);
+    }
+    const parsed = text ? JSON.parse(text) as { id?: string } : {};
+    results.push({ id: parsed.id });
+  }
+
+  return results;
+}
+
+async function sendTelegramMessage(
+  target: TelegramReplyTarget,
+  body: string,
+  signal?: AbortSignal,
+): Promise<Array<{ messageId?: string }>> {
+  const chunks = chunkTelegramMessage(markdownToTelegramHtml(body), 4096);
+  const results: Array<{ messageId?: string }> = [];
+  const chatId = target.chatId;
+  let firstReplyId = target.replyToMessageId;
+
+  for (const chunk of chunks) {
+    const url = new URL("https://api.telegram.org");
+    url.pathname = `/bot${target.botToken}/sendMessage`;
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        chat_id: Number(chatId),
+        text: chunk,
+        parse_mode: "HTML",
+        ...(firstReplyId ? { reply_to_message_id: Number(firstReplyId) } : {}),
+      }),
+      signal,
+    });
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(`Telegram send failed (${response.status}): ${text}`);
+    }
+    const parsed = text ? JSON.parse(text) as { ok?: boolean; description?: string; result?: { message_id?: number } } : {};
+    if (parsed.ok === false) {
+      throw new Error(`Telegram send failed: ${parsed.description || "unknown_error"}`);
+    }
+    const msgId = parsed.result?.message_id ? String(parsed.result.message_id) : undefined;
+    results.push({ messageId: msgId });
+    // Only reply to the original message on the first chunk
+    firstReplyId = undefined;
+  }
+
+  return results;
 }
