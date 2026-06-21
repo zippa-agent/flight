@@ -16,6 +16,16 @@ import {
   readSlackThreadByTarget,
   type SlackThreadLedgerRecord,
 } from "../adapters/slack/thread-ledger";
+import {
+  parseDiscordThreadTarget,
+  readDiscordThreadByTarget,
+  type DiscordThreadLedgerRecord,
+} from "../adapters/discord/thread-ledger";
+import {
+  parseTelegramThreadTarget,
+  readTelegramThreadByTarget,
+  type TelegramThreadLedgerRecord,
+} from "../adapters/telegram/thread-ledger";
 import { formatContactList, formatResolvedIdentity, readContactBook, type ContactBook } from "../listener/contacts";
 import { setListenerThreadReadState } from "../listener/store";
 import type { ListenerReadMark } from "../listener/types";
@@ -37,7 +47,7 @@ export function createReadThreadTool(input: {
   return defineTool({
     name: "read_thread",
     description:
-      "Read the transcript for a known conversation target, currently email-thread:<id>, phone-..., slack:<channel_id>:<thread_ts>, slack:<channel_id>, or a raw Slack channel/DM/group id. By default this does not change read state; pass mark: \"read\" or mark: \"unread\" only when you deliberately want to update listener state.",
+      "Read the transcript for a known conversation target, currently email-thread:<id>, phone-..., slack:<channel_id>:<thread_ts>, slack:<channel_id>, discord:<channel_id>:<thread_id>, discord:<channel_id>, telegram:<chat_id>:<reply_to_message_id>, telegram:<chat_id>, or a raw Slack/Discord channel id. By default this does not change read state; pass mark: \"read\" or mark: \"unread\" only when you deliberately want to update listener state.",
     parameters: ReadThreadInput,
     execute: async ({ target, limit, mark }) => {
       const contactBook = await readContactBook(input.env, input.agentId);
@@ -71,7 +81,27 @@ export function createReadThreadTool(input: {
         );
       }
 
-      throw new Error(`Invalid conversation target "${target}". Expected email-thread:<id>, phone-..., slack:<channel_id>:<thread_ts>, slack:<channel_id>, or a raw Slack channel/DM/group id.`);
+      const discordTarget = parseDiscordThreadTarget(target);
+      if (discordTarget) {
+        const records = await readDiscordThreadByTarget(input.env, input.agentId, discordTarget, limit);
+        if (records.length === 0) return `No transcript found for ${discordTarget.inputTarget}.`;
+        return withMarkResult(
+          formatDiscordThreadTranscript(discordTarget.inputTarget, records, contactBook),
+          await applyMark(input.env, input.agentId, discordTarget.inputTarget, mark),
+        );
+      }
+
+      const telegramTarget = parseTelegramThreadTarget(target);
+      if (telegramTarget) {
+        const records = await readTelegramThreadByTarget(input.env, input.agentId, telegramTarget, limit);
+        if (records.length === 0) return `No transcript found for ${telegramTarget.inputTarget}.`;
+        return withMarkResult(
+          formatTelegramThreadTranscript(telegramTarget.inputTarget, records, contactBook),
+          await applyMark(input.env, input.agentId, telegramTarget.inputTarget, mark),
+        );
+      }
+
+      throw new Error(`Invalid conversation target "${target}". Expected email-thread:<id>, phone-..., slack:<channel_id>:<thread_ts>, slack:<channel_id>, discord:<channel_id>:<thread_id>, discord:<channel_id>, telegram:<chat_id>:<reply_to_message_id>, telegram:<chat_id>, or a raw Slack/Discord channel id.`);
     },
   });
 }
@@ -134,6 +164,47 @@ function formatSlackThreadTranscript(
   return lines.join("\n\n");
 }
 
+function formatDiscordThreadTranscript(
+  target: string,
+  records: DiscordThreadLedgerRecord[],
+  contactBook: ContactBook,
+): string {
+  const lines = [
+    `Thread: ${target}`,
+    "",
+    ...records.map((record) => [
+      `## ${record.at || "(unknown time)"} - ${discordSender(record, contactBook)}`,
+      record.channelName ? `Channel: #${record.channelName}` : `Channel: ${record.channelId}`,
+      record.threadId ? `Thread id: ${record.threadId}` : "",
+      record.messageId ? `Message id: ${record.messageId}` : "",
+      "",
+      normalizeText(record.body) || "(no text captured)",
+    ].filter(Boolean).join("\n")),
+  ];
+  return lines.join("\n\n");
+}
+
+function formatTelegramThreadTranscript(
+  target: string,
+  records: TelegramThreadLedgerRecord[],
+  contactBook: ContactBook,
+): string {
+  const lines = [
+    `Thread: ${target}`,
+    "",
+    ...records.map((record) => [
+      `## ${record.at || "(unknown time)"} - ${telegramSender(record, contactBook)}`,
+      record.chatName ? `Chat: ${record.chatName}` : `Chat: ${record.chatId}`,
+      record.chatType ? `Type: ${record.chatType}` : "",
+      record.messageId ? `Message id: ${record.messageId}` : "",
+      record.replyToMessageId ? `Reply to: ${record.replyToMessageId}` : "",
+      "",
+      normalizeText(record.body) || "(no text captured)",
+    ].filter(Boolean).join("\n")),
+  ];
+  return lines.join("\n\n");
+}
+
 function emailSender(record: EmailThreadLedgerRecord, contactBook: ContactBook): string {
   if (record.type === "outbound") return record.from || "agent";
   return formatResolvedIdentity(contactBook, record.from) || "unknown sender";
@@ -144,6 +215,20 @@ function slackSender(record: SlackThreadLedgerRecord, contactBook: ContactBook):
   const userIdLabel = formatResolvedIdentity(contactBook, record.userId);
   if (record.userId && userIdLabel && userIdLabel !== record.userId) return userIdLabel;
   return formatResolvedIdentity(contactBook, record.userName) || userIdLabel || "unknown Slack sender";
+}
+
+function discordSender(record: DiscordThreadLedgerRecord, contactBook: ContactBook): string {
+  if (record.type === "outbound") return record.userName || "agent";
+  const userIdLabel = formatResolvedIdentity(contactBook, record.userId);
+  if (record.userId && userIdLabel && userIdLabel !== record.userId) return userIdLabel;
+  return formatResolvedIdentity(contactBook, record.displayName) || formatResolvedIdentity(contactBook, record.userName) || userIdLabel || "unknown Discord sender";
+}
+
+function telegramSender(record: TelegramThreadLedgerRecord, contactBook: ContactBook): string {
+  if (record.type === "outbound") return record.userName || "agent";
+  const userIdLabel = formatResolvedIdentity(contactBook, record.userId);
+  if (record.userId && userIdLabel && userIdLabel !== record.userId) return userIdLabel;
+  return formatResolvedIdentity(contactBook, record.displayName) || formatResolvedIdentity(contactBook, record.userName) || userIdLabel || "unknown Telegram sender";
 }
 
 function phoneSender(record: PhoneThreadLedgerRecord, contactBook: ContactBook): string {
