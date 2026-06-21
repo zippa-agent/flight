@@ -8,6 +8,7 @@ export type AdapterName =
   | "docs"
   | "support"
   | "slack"
+  | "discord"
   | "phone"
   | "telegram"
   | "sms"
@@ -90,13 +91,41 @@ export interface SlackReplyTarget {
   threadTarget: string;
 }
 
+export interface DiscordReplyTarget {
+  kind: "discord";
+  channel: string;
+  channelName?: string;
+  threadId?: string;
+  botToken: string;
+  botUserId?: string;
+  guildId?: string;
+  threadTarget: string;
+}
+
+export interface TelegramReplyTarget {
+  kind: "telegram";
+  chatId: string;
+  chatType?: string;
+  chatName?: string;
+  messageId?: string;
+  replyToMessageId?: string;
+  botToken: string;
+  botUserId?: string;
+  threadTarget: string;
+}
+
 export interface WebhookReplyTarget {
   kind: "webhook";
   url: string;
   token?: string;
 }
 
-export type ReplyTarget = EmailReplyTarget | SlackReplyTarget | WebhookReplyTarget;
+export type ReplyTarget =
+  | EmailReplyTarget
+  | SlackReplyTarget
+  | DiscordReplyTarget
+  | TelegramReplyTarget
+  | WebhookReplyTarget;
 
 export interface InboundEvent {
   version: "flight.inbound.v1";
