@@ -185,10 +185,10 @@ export function buildToolCatalog(input: ToolCatalogInput): ToolCatalogEntry[] {
       name: "list_channels",
       category: "conversation",
       description:
-        "List durable email, phone, and Slack conversation targets known in this relationship scope.",
+        "List durable email, phone, Slack, Discord, and Telegram conversation targets known in this relationship scope.",
       promptDetail:
-        "list_channels: list exact email-thread:<id>, phone-..., and slack:<channel_id>:<thread_ts> targets when known, including read/unread listener status.",
-      keywords: ["conversation", "email", "phone", "sms", "slack", "channels", "threads", "unread"],
+        "list_channels: list exact email-thread:<id>, phone-..., slack:<channel_id>:<thread_ts>, discord:<channel_id>:<thread_id>, and telegram:<chat_id> targets when known, including read/unread listener status.",
+      keywords: ["conversation", "email", "phone", "sms", "slack", "discord", "telegram", "channels", "threads", "unread"],
       risk: "read",
       available: threadedConversationAvailable,
       create: () => createListChannelsTool({ env: input.env, agentId: input.turn?.event.agentId || "" }),
@@ -197,10 +197,10 @@ export function buildToolCatalog(input: ToolCatalogInput): ToolCatalogEntry[] {
       name: "read_thread",
       category: "conversation",
       description:
-        "Read a known email, phone, or Slack thread target before deciding what action to take.",
+        "Read a known email, phone, Slack, Discord, or Telegram thread target before deciding what action to take.",
       promptDetail:
-        "read_thread: read a known email-thread:<id>, phone-..., slack:<channel_id>:<thread_ts>, or slack:<channel_id> target. Optional mark updates listener read state only when explicitly set.",
-      keywords: ["conversation", "thread", "email", "phone", "sms", "slack", "history", "read", "unread"],
+        "read_thread: read a known email-thread:<id>, phone-..., slack:<channel_id>:<thread_ts>, discord:<channel_id>:<thread_id>, or telegram:<chat_id> target. Optional mark updates listener read state only when explicitly set.",
+      keywords: ["conversation", "thread", "email", "phone", "sms", "slack", "discord", "telegram", "history", "read", "unread"],
       risk: "read",
       available: threadedConversationAvailable,
       create: () => createReadThreadTool({ env: input.env, agentId: input.turn?.event.agentId || "" }),
@@ -221,10 +221,10 @@ export function buildToolCatalog(input: ToolCatalogInput): ToolCatalogEntry[] {
       name: "send_message",
       category: "conversation",
       description:
-        "Send the user-visible reply for an active messages-only email or Slack turn.",
+        "Send the user-visible reply for an active messages-only email, Slack, Discord, or Telegram turn.",
       promptDetail:
-        "send_message: the only user-visible delivery path on messages-only surfaces; email targets use email-thread:<id>, Slack targets use slack:<channel_id> or slack:<channel_id>:<thread_ts>.",
-      keywords: ["conversation", "send", "reply", "email", "slack"],
+        "send_message: the only user-visible delivery path on messages-only surfaces; email targets use email-thread:<id>, Slack targets use slack:<channel_id> or slack:<channel_id>:<thread_ts>, Discord targets use discord:<channel_id> or discord:<channel_id>:<thread_id>, Telegram targets use telegram:<chat_id> or telegram:<chat_id>:<reply_to_message_id>.",
+      keywords: ["conversation", "send", "reply", "email", "slack", "discord", "telegram"],
       risk: "external-change",
       available: conversationAvailable,
       create: () => {
@@ -376,7 +376,7 @@ function scoreEntry(entry: ToolCatalogEntry, query: string): number {
 }
 
 function supportsConversationTools(adapter: string | undefined): boolean {
-  return adapter === "email" || adapter === "phone" || adapter === "sms" || adapter === "slack" || adapter === "flight" || adapter === "web";
+  return adapter === "email" || adapter === "phone" || adapter === "sms" || adapter === "slack" || adapter === "discord" || adapter === "telegram" || adapter === "flight" || adapter === "web";
 }
 
 function hasSupabaseForAgentTools(env: Env): boolean {
