@@ -9,6 +9,10 @@ import { normalizePhoneEvent, normalizePhonePayload, phoneLedgerEventFromPayload
 import { appendPhoneThreadEvent } from "./phone/thread-ledger";
 import { normalizeSlackEvent, type SlackBridgePayload } from "./slack";
 import { appendSlackThreadEvent } from "./slack/thread-ledger";
+import { normalizeDiscordEvent, type DiscordBridgePayload } from "./discord";
+import { appendDiscordThreadEvent } from "./discord/thread-ledger";
+import { normalizeTelegramEvent, type TelegramBridgePayload } from "./telegram";
+import { appendTelegramThreadEvent } from "./telegram/thread-ledger";
 import { fetchAgentRuntimeRecord } from "../platform/supabase";
 import { jsonError, requireBearer } from "../shared/http";
 import { noteListenerInboundThread } from "../listener/store";
@@ -19,6 +23,8 @@ type AppContext = Context<{ Bindings: Env }>;
 const EMAIL_INLINE_MIRROR_TIMEOUT_MS = 50_000;
 const SLACK_INLINE_MIRROR_TIMEOUT_MS = 50_000;
 const PHONE_INLINE_MIRROR_TIMEOUT_MS = 50_000;
+const DISCORD_INLINE_MIRROR_TIMEOUT_MS = 50_000;
+const TELEGRAM_INLINE_MIRROR_TIMEOUT_MS = 50_000;
 
 export async function handleEmailWebhook(c: AppContext): Promise<Response> {
   const unauthorized = requireBearer(c, c.env.FLIGHT_WEBHOOK_TOKEN || c.env.FLIGHT_API_TOKEN);
@@ -256,6 +262,207 @@ export async function handleSlackWebhook(c: AppContext): Promise<Response> {
       ok: true,
       runtime: "flight",
       adapter: "slack",
+      agentId,
+      prompted: true,
+      ...receipt,
+    }, 202);
+  } catch (error) {
+    return jsonError(error instanceof Error ? error.message : String(error), 400);
+  }
+}
+
+export async function handleDiscordWebhook(c: AppContext): Promise<Response> {
+  const unauthorized = requireBearer(c, c.env.FLIGHT_WEBHOOK_TOKEN || c.env.FLIGHT_API_TOKEN);
+  if (unauthorized) return unauthorized;
+
+  const agentId = c.req.param("agentId");
+  if (!agentId) return jsonError("Missing agent id.", 400);
+
+  let payload: DiscordBridgePayload;
+  try {
+    payload = await c.req.json() as DiscordBridgePayload;
+  } catch {
+    return jsonError("Expected JSON body.", 400);
+  }
+
+  const record = await fetchAgentRuntimeRecord(agentId, c.env);
+  if (!record || record.runtime !== "flight" || record.enabled === false) {
+    return jsonError("Flight agent not found.", 404);
+  }
+
+  try {
+    const promptOnDelivery = resolvePromptOnDelivery({
+      headers: c.req.raw.headers,
+      body: payload,
+      defaultValue: true,
+    });
+    const normalized = normalizeDiscordEvent({
+      agentId,
+      payload,
+    });
+    if (normalized.status === "skipped") {
+      return c.json({
+        ok: true,
+        runtime: "flight",
+        adapter: "discord",
+        agentId,
+        skipped: true,
+        reason: normalized.reason,
+      }, 202);
+    }
+
+    await appendDiscordThreadEvent(c.env, agentId, {
+      type: "inbound",
+      at: normalized.event.delivery.receivedAt,
+      channelId: normalized.discordEvent.channelId,
+      channelName: normalized.discordEvent.channelName,
+      threadId: normalized.discordEvent.threadId,
+      messageId: normalized.discordEvent.messageId,
+      userId: normalized.discordEvent.userId,
+      userName: normalized.discordEvent.userName,
+      displayName: normalized.discordEvent.displayName,
+      body: normalized.discordEvent.text || normalized.discordEvent.rawText,
+      directlyAddressed: normalized.discordEvent.directlyAddressed,
+      sourceEventType: normalized.discordEvent.sourceEventType,
+    }).catch((error) => {
+      console.warn("Flight Discord thread ledger inbound append failed:", error);
+    });
+
+    const discordThreadTarget = String(normalized.event.context?.discordThreadTarget || normalized.event.scope.channelId || normalized.event.scope.id);
+    await noteListenerInboundThread({
+      env: c.env,
+      agentId,
+      target: discordThreadTarget,
+      adapter: "discord",
+      at: normalized.event.delivery.receivedAt,
+      eventId: normalized.event.delivery.id,
+      label: normalized.discordEvent.channelName,
+      lastPreview: normalized.discordEvent.text || normalized.discordEvent.rawText,
+      participants: compactStrings([normalized.discordEvent.displayName, normalized.discordEvent.userName, normalized.discordEvent.userId]),
+    }).catch((error) => {
+      console.warn("Flight Discord listener state update failed:", error);
+    });
+
+    if (!promptOnDelivery) {
+      return c.json({
+        ok: true,
+        runtime: "flight",
+        adapter: "discord",
+        agentId,
+        prompted: false,
+      }, 202);
+    }
+
+    const receipt = await submitDetachedTurn(c, normalized.event, {
+      detachedMode: "inline",
+      inlineMirrorTimeoutMs: DISCORD_INLINE_MIRROR_TIMEOUT_MS,
+      tolerateMirrorErrors: true,
+    });
+    return c.json({
+      ok: true,
+      runtime: "flight",
+      adapter: "discord",
+      agentId,
+      prompted: true,
+      ...receipt,
+    }, 202);
+  } catch (error) {
+    return jsonError(error instanceof Error ? error.message : String(error), 400);
+  }
+}
+
+export async function handleTelegramWebhook(c: AppContext): Promise<Response> {
+  const unauthorized = requireBearer(c, c.env.FLIGHT_WEBHOOK_TOKEN || c.env.FLIGHT_API_TOKEN);
+  if (unauthorized) return unauthorized;
+
+  const agentId = c.req.param("agentId");
+  if (!agentId) return jsonError("Missing agent id.", 400);
+
+  let payload: TelegramBridgePayload;
+  try {
+    payload = await c.req.json() as TelegramBridgePayload;
+  } catch {
+    return jsonError("Expected JSON body.", 400);
+  }
+
+  const record = await fetchAgentRuntimeRecord(agentId, c.env);
+  if (!record || record.runtime !== "flight" || record.enabled === false) {
+    return jsonError("Flight agent not found.", 404);
+  }
+
+  try {
+    const promptOnDelivery = resolvePromptOnDelivery({
+      headers: c.req.raw.headers,
+      body: payload,
+      defaultValue: true,
+    });
+    const normalized = normalizeTelegramEvent({
+      agentId,
+      payload,
+    });
+    if (normalized.status === "skipped") {
+      return c.json({
+        ok: true,
+        runtime: "flight",
+        adapter: "telegram",
+        agentId,
+        skipped: true,
+        reason: normalized.reason,
+      }, 202);
+    }
+
+    await appendTelegramThreadEvent(c.env, agentId, {
+      type: "inbound",
+      at: normalized.event.delivery.receivedAt,
+      chatId: normalized.telegramEvent.chatId,
+      chatName: normalized.telegramEvent.chatName,
+      chatType: normalized.telegramEvent.chatType,
+      messageId: normalized.telegramEvent.messageId,
+      replyToMessageId: normalized.telegramEvent.replyToMessageId,
+      userId: normalized.telegramEvent.userId,
+      userName: normalized.telegramEvent.userName,
+      displayName: normalized.telegramEvent.displayName,
+      body: normalized.telegramEvent.text || normalized.telegramEvent.rawText,
+      directlyAddressed: normalized.telegramEvent.directlyAddressed,
+      sourceEventType: normalized.telegramEvent.sourceEventType,
+    }).catch((error) => {
+      console.warn("Flight Telegram thread ledger inbound append failed:", error);
+    });
+
+    const telegramThreadTarget = String(normalized.event.context?.telegramThreadTarget || normalized.event.scope.channelId || normalized.event.scope.id);
+    await noteListenerInboundThread({
+      env: c.env,
+      agentId,
+      target: telegramThreadTarget,
+      adapter: "telegram",
+      at: normalized.event.delivery.receivedAt,
+      eventId: normalized.event.delivery.id,
+      label: normalized.telegramEvent.chatName,
+      lastPreview: normalized.telegramEvent.text || normalized.telegramEvent.rawText,
+      participants: compactStrings([normalized.telegramEvent.displayName, normalized.telegramEvent.userName, normalized.telegramEvent.userId]),
+    }).catch((error) => {
+      console.warn("Flight Telegram listener state update failed:", error);
+    });
+
+    if (!promptOnDelivery) {
+      return c.json({
+        ok: true,
+        runtime: "flight",
+        adapter: "telegram",
+        agentId,
+        prompted: false,
+      }, 202);
+    }
+
+    const receipt = await submitDetachedTurn(c, normalized.event, {
+      detachedMode: "inline",
+      inlineMirrorTimeoutMs: TELEGRAM_INLINE_MIRROR_TIMEOUT_MS,
+      tolerateMirrorErrors: true,
+    });
+    return c.json({
+      ok: true,
+      runtime: "flight",
+      adapter: "telegram",
       agentId,
       prompted: true,
       ...receipt,
