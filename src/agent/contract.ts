@@ -69,7 +69,7 @@ export function contractText(policy: ToolPolicy, input: RuntimeContractInput = {
   }
 
   tools.push(policy.allowSendMessage && available.has("send_message")
-    ? "send_message: available for this turn. It is the only user-visible delivery path on this messages-only surface. Email targets use email-thread:<id>; Slack thread targets use slack:<channel_id>:<thread_ts>, and top-level Slack sends use slack:<channel_id>."
+    ? "send_message: available for this turn. It is the only user-visible delivery path on this messages-only surface. Email targets use email-thread:<id>; Slack thread targets use slack:<channel_id>:<thread_ts>, and top-level Slack sends use slack:<channel_id>; Discord thread targets use discord:<channel_id>:<thread_id>, and top-level Discord sends use discord:<channel_id>; Telegram reply targets use telegram:<chat_id>:<reply_to_message_id>, and top-level Telegram sends use telegram:<chat_id>."
     : "No provider delivery tool is available for this turn.");
   tools.push(policy.allowFullBash && available.has("full_bash")
     ? "full_bash: available for this turn. It reaches the configured Crawdad-backed host container tool."
