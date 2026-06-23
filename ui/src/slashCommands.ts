@@ -45,6 +45,12 @@ export const SLASH_COMMANDS: SlashCommandDefinition[] = [
     insertText: '/login ',
   },
   {
+    command: '/goal',
+    label: 'Goal',
+    description: 'Set or view the active session goal.',
+    insertText: '/goal ',
+  },
+  {
     command: '/cancel',
     label: 'Cancel',
     description: 'Cancel pending command input.',
