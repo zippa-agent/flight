@@ -20,6 +20,9 @@ import { createSendMessageTool } from "./send-message";
 import { createSetSiteBindingTool } from "./set-site-binding";
 import { createUploadSiteContentTool } from "./upload-site-content";
 import { createYieldNoActionTool } from "./yield-no-action";
+import { createSetGoalTool } from "./set-goal";
+import { createCompleteGoalTool } from "./complete-goal";
+import { createAbandonGoalTool } from "./abandon-goal";
 
 export type ToolCategory =
   | "discovery"
@@ -245,6 +248,36 @@ export function buildToolCatalog(input: ToolCatalogInput): ToolCatalogEntry[] {
       create: () => createYieldNoActionTool(),
     },
     {
+      name: "set_goal",
+      category: "runtime",
+      description: "Set or replace the active goal for this agent. The goal persists across turns and is surfaced at the top of every subsequent turn.",
+      promptDetail: "set_goal: persist a user-facing goal that will be included in agent instructions every turn until completed or abandoned. Use when the user declares a session goal or types /goal <text>.",
+      keywords: ["goal", "objective", "task", "focus", "mission"],
+      risk: "write",
+      available: workspaceAvailable,
+      create: () => createSetGoalTool({ env: input.env, instanceId: input.instanceId }),
+    },
+    {
+      name: "complete_goal",
+      category: "runtime",
+      description: "Mark the current active goal as completed.",
+      promptDetail: "complete_goal: close the active goal when the user confirms the work is done.",
+      keywords: ["goal", "complete", "done", "finish"],
+      risk: "write",
+      available: workspaceAvailable,
+      create: () => createCompleteGoalTool({ env: input.env, instanceId: input.instanceId }),
+    },
+    {
+      name: "abandon_goal",
+      category: "runtime",
+      description: "Mark the current active goal as abandoned, with an optional reason.",
+      promptDetail: "abandon_goal: discard the active goal when it is no longer relevant, with an optional reason.",
+      keywords: ["goal", "abandon", "cancel", "drop"],
+      risk: "write",
+      available: workspaceAvailable,
+      create: () => createAbandonGoalTool({ env: input.env, instanceId: input.instanceId }),
+    },
+    {
       name: "full_bash",
       category: "runtime",
       description:
@@ -362,7 +395,8 @@ function scoreEntry(entry: ToolCatalogEntry, query: string): number {
     entry.description,
     entry.promptDetail || "",
     ...(entry.keywords || []),
-  ].join("\n").toLowerCase();
+  ].join("
+").toLowerCase();
   const terms = q.split(/\s+/u).filter(Boolean);
   let score = 0;
   if (name === q) score += 100;
