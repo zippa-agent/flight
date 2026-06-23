@@ -64,6 +64,9 @@ export function contractText(policy: ToolPolicy, input: RuntimeContractInput = {
   if (available.has("remember_contact")) {
     tools.push("remember_contact: available for updating the local R2 contact book when the user/admin gives you an identity mapping or a trusted CRM/contact lookup confirms one. This only affects how future list_channels/read_thread output labels contacts.");
   }
+  if (available.has("set_goal")) {
+    tools.push("set_goal / complete_goal / abandon_goal: available for persistent goal tracking. set_goal records an active goal that is surfaced at the start of every turn until closed. complete_goal marks it done. abandon_goal discards it with an optional reason. When a user types /goal <text>, treat it as a set_goal request.");
+  }
   if (policy.allowYieldNoAction && available.has("yield_no_action")) {
     tools.push("yield_no_action: available for ambient or passive turns only. Use it when you were not directly addressed and have nothing useful to add; it records a quiet no-op without sending a user-visible message.");
   }
@@ -88,5 +91,6 @@ export function contractText(policy: ToolPolicy, input: RuntimeContractInput = {
     "",
     "Available capability details:",
     ...tools.map((tool) => `- ${tool}`),
-  ].join("\n");
+  ].join("
+");
 }
