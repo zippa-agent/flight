@@ -187,7 +187,7 @@ export function buildToolCatalog(input: ToolCatalogInput): ToolCatalogEntry[] {
       description:
         "List durable email, phone, Slack, Discord, and Telegram conversation targets known in this relationship scope.",
       promptDetail:
-        "list_channels: list exact email-thread:<id>, phone-..., slack:<channel_id>:<thread_ts>, discord:<channel_id>:<thread_id>, and telegram:<chat_id> targets when known, including read/unread listener status.",
+        "list_channels: list exact email-thread:<id>, phone-..., slack:<channel_id>:<thread_ts>, discord:<channel_id>, discord:<channel_id>:<message_id>, telegram:<chat_id>, and telegram:<chat_id>:<message_id> targets when known, including read/unread listener status.",
       keywords: ["conversation", "email", "phone", "sms", "slack", "discord", "telegram", "channels", "threads", "unread"],
       risk: "read",
       available: threadedConversationAvailable,
@@ -199,7 +199,7 @@ export function buildToolCatalog(input: ToolCatalogInput): ToolCatalogEntry[] {
       description:
         "Read a known email, phone, Slack, Discord, or Telegram thread target before deciding what action to take.",
       promptDetail:
-        "read_thread: read a known email-thread:<id>, phone-..., slack:<channel_id>:<thread_ts>, discord:<channel_id>:<thread_id>, or telegram:<chat_id> target. Optional mark updates listener read state only when explicitly set.",
+        "read_thread: read a known email-thread:<id>, phone-..., slack:<channel_id>:<thread_ts>, discord:<channel_id>, discord:<channel_id>:<message_id>, telegram:<chat_id>, or telegram:<chat_id>:<message_id> target. Optional mark updates listener read state only when explicitly set.",
       keywords: ["conversation", "thread", "email", "phone", "sms", "slack", "discord", "telegram", "history", "read", "unread"],
       risk: "read",
       available: threadedConversationAvailable,
@@ -223,7 +223,7 @@ export function buildToolCatalog(input: ToolCatalogInput): ToolCatalogEntry[] {
       description:
         "Send the user-visible reply for an active messages-only email, Slack, Discord, or Telegram turn.",
       promptDetail:
-        "send_message: the only user-visible delivery path on messages-only surfaces; email targets use email-thread:<id>, Slack targets use slack:<channel_id> or slack:<channel_id>:<thread_ts>, Discord targets use discord:<channel_id> or discord:<channel_id>:<thread_id>, Telegram targets use telegram:<chat_id> or telegram:<chat_id>:<reply_to_message_id>.",
+        "send_message: the only user-visible delivery path on messages-only surfaces; email targets use email-thread:<id>, Slack targets use slack:<channel_id> or slack:<channel_id>:<thread_ts>, Discord targets use discord:<channel_id> or discord:<channel_id>:<message_id>, Telegram targets use telegram:<chat_id> or telegram:<chat_id>:<message_id>.",
       keywords: ["conversation", "send", "reply", "email", "slack", "discord", "telegram"],
       risk: "external-change",
       available: conversationAvailable,

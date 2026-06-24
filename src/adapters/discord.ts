@@ -53,6 +53,7 @@ export interface NormalizedDiscordEvent {
   channelId: string;
   channelName?: string;
   threadId?: string;
+  replyToMessageId?: string;
   messageId: string;
   userId: string;
   userName?: string;
@@ -98,6 +99,7 @@ export function normalizeDiscordEvent(input: {
   const channelId = event.channel_id;
   const isDm = event.channel_type === 1 || !event.guild_id;
   const threadId = event.thread_id || undefined;
+  const replyToMessageId = event.referenced_message?.id || undefined;
 
   const botUserId = input.payload.botUserId || input.payload.applicationId;
   const mentionPattern = botUserId ? new RegExp(`<@!?${botUserId}>`, "iu") : null;
@@ -106,11 +108,10 @@ export function normalizeDiscordEvent(input: {
   const rawText = event.content || "";
   const text = rawText.replace(/<@!?\d+>/giu, "").trim();
 
-  const threadTarget = discordThreadTarget(channelId, threadId);
+  const threadTarget = discordThreadTarget(channelId, replyToMessageId);
   const threadIdHash = discordThreadIdForEvent({
     channelId,
-    threadId,
-    messageId: event.id,
+    replyToMessageId,
   });
 
   const channelName = input.payload.channelNames?.[channelId];
@@ -127,6 +128,7 @@ export function normalizeDiscordEvent(input: {
     channelId,
     channelName,
     threadId,
+    replyToMessageId,
     messageId: event.id,
     userId,
     userName,
@@ -144,11 +146,11 @@ export function normalizeDiscordEvent(input: {
     event: {
       version: "flight.inbound.v1",
       agentId: input.agentId,
-      adapter: "slack",
+      adapter: "discord",
       deliveryMode: "messages-only",
       scope: {
-        kind: "channel",
-        id: threadTarget,
+        kind: "agent",
+        id: "web",
         parentAgentId: input.agentId,
         provider: "discord",
         channelId: `discord:${discordChannelDisplayLabel(channelId, channelName)}`,
@@ -193,7 +195,7 @@ export function normalizeDiscordEvent(input: {
         kind: "discord",
         channel: channelId,
         channelName,
-        threadId,
+        replyToMessageId,
         botToken,
         botUserId: botUserId || undefined,
         guildId: input.payload.guild_id || event.guild_id,
@@ -204,7 +206,7 @@ export function normalizeDiscordEvent(input: {
         "Ordinary assistant text is internal harness output and is not sent to Discord.",
         "To produce a user-visible Discord reply, call send_message with the message body.",
         `The current Discord reply target is ${threadTarget}; use it exactly if a tool asks for a target.`,
-        "Use discord:<channel_id>:<thread_id> to reply inside a Discord thread. Use discord:<channel_id> only when intentionally posting a top-level channel or DM message.",
+        "Use discord:<channel_id>:<message_id> to create a Discord message reply. Use discord:<channel_id> to post in that channel, DM, or Discord thread channel.",
         "Discord messages have a 2000 character limit. If your reply exceeds this, Flight will split it into multiple messages automatically.",
         "Do not include Discord metadata or markdown fences unless the user explicitly asks for them.",
         directlyAddressed
@@ -216,6 +218,7 @@ export function normalizeDiscordEvent(input: {
         discordThreadTarget: threadTarget,
         discordChannel: channelId,
         discordThreadIdRaw: threadId,
+        discordReplyToMessageId: replyToMessageId,
         discordMessageId: event.id,
         discordDirectlyAddressed: directlyAddressed,
       },
@@ -239,7 +242,7 @@ function buildDiscordModelMessageText(event: DiscordEventInner, normalized: Norm
   const parts = [
     `Discord channel: ${normalized.channelName ? `#${normalized.channelName}` : normalized.channelId}`,
     `Discord user: ${normalized.displayName || normalized.userName || normalized.userId}`,
-    normalized.threadId ? `Discord thread target: ${discordThreadTarget(normalized.channelId, normalized.threadId)}` : `Discord target: ${discordThreadTarget(normalized.channelId)}`,
+    normalized.replyToMessageId ? `Discord reply target: ${discordThreadTarget(normalized.channelId, normalized.replyToMessageId)}` : `Discord target: ${discordThreadTarget(normalized.channelId)}`,
     normalized.directlyAddressed ? "Addressing: direct" : "Addressing: ambient",
   ];
   appendDiscordFileDisplay(parts, event);
@@ -261,8 +264,8 @@ function buildDiscordAmbientMessageText(
     const who = message.displayName
       ? `${message.displayName} (${message.userId})`
       : message.userId;
-    const target = message.threadId
-      ? ` [Reply target: ${discordThreadTarget(message.channelId, message.threadId)}; message_id: ${message.messageId}; thread_id: ${message.threadId}]`
+    const target = message.replyToMessageId
+      ? ` [Reply target: ${discordThreadTarget(message.channelId, message.replyToMessageId)}; message_id: ${message.messageId}; reply_to: ${message.replyToMessageId}]`
       : ` [Reply target: ${discordThreadTarget(message.channelId)}; message_id: ${message.messageId}]`;
     return `${who}${target}: ${message.text || message.rawText || "(no text)"}`;
   }).join("\n");

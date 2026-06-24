@@ -21,7 +21,7 @@ export function createListChannelsTool(input: {
   return defineTool({
     name: "list_channels",
     description:
-      "List known conversation targets for this Flight agent. Returns recent email-thread:<id>, phone-..., and slack:<channel_id>:<thread_ts> targets from durable ledgers; use these exact targets with read_thread or send_message when choosing a specific conversation.",
+      "List known conversation targets for this Flight agent. Returns recent email-thread:<id>, phone-..., Slack, Discord, and Telegram targets from durable ledgers; use these exact targets with read_thread or send_message when choosing a specific conversation.",
     parameters: ListChannelsInput,
     execute: async ({ limit }) => {
       const [emailThreads, phoneThreads, slackThreads, discordThreads, telegramThreads, listenerStates, contactBook] = await Promise.all([

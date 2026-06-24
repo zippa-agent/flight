@@ -173,7 +173,6 @@ export function normalizeTelegramEvent(input: {
   const threadIdHash = telegramThreadIdForEvent({
     chatId,
     replyToMessageId,
-    messageId,
   });
 
   const chatName = input.payload.chatNames?.[chatId] || message.chat.title || (isPrivate ? `DM:${displayName}` : undefined);
@@ -212,8 +211,8 @@ export function normalizeTelegramEvent(input: {
       adapter: "telegram",
       deliveryMode: "messages-only",
       scope: {
-        kind: "channel",
-        id: threadTarget,
+        kind: "agent",
+        id: "web",
         parentAgentId: input.agentId,
         provider: "telegram",
         channelId: `telegram:${telegramChatDisplayLabel(chatId, chatName)}`,

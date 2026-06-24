@@ -176,6 +176,7 @@ function formatDiscordThreadTranscript(
       `## ${record.at || "(unknown time)"} - ${discordSender(record, contactBook)}`,
       record.channelName ? `Channel: #${record.channelName}` : `Channel: ${record.channelId}`,
       record.threadId ? `Thread id: ${record.threadId}` : "",
+      record.replyToMessageId ? `Reply to: ${record.replyToMessageId}` : "",
       record.messageId ? `Message id: ${record.messageId}` : "",
       "",
       normalizeText(record.body) || "(no text captured)",

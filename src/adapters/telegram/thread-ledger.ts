@@ -86,10 +86,10 @@ export function telegramThreadTarget(chatId: string, replyToMessageId?: string):
 }
 
 export function telegramThreadKeyForEvent(
-  event: Pick<TelegramThreadLedgerEvent, "chatId" | "replyToMessageId" | "messageId">,
+  event: Pick<TelegramThreadLedgerEvent, "chatId" | "replyToMessageId">,
 ): string {
   const chatId = event.chatId.trim();
-  const rootId = event.replyToMessageId || event.messageId || "top";
+  const rootId = event.replyToMessageId || "top";
   return `telegram:${chatId}:${rootId}`;
 }
 
@@ -98,7 +98,7 @@ export function telegramThreadIdForKey(threadKey: string): string {
 }
 
 export function telegramThreadIdForEvent(
-  event: Pick<TelegramThreadLedgerEvent, "chatId" | "replyToMessageId" | "messageId">,
+  event: Pick<TelegramThreadLedgerEvent, "chatId" | "replyToMessageId">,
 ): string {
   return telegramThreadIdForKey(telegramThreadKeyForEvent(event));
 }
@@ -146,7 +146,7 @@ export async function readTelegramThreadLedger(env: Env, agentId: string): Promi
         ...event,
         threadKey,
         threadIdHash,
-        sendTarget: telegramThreadTarget(event.chatId, event.replyToMessageId || event.messageId),
+        sendTarget: telegramThreadTarget(event.chatId, event.replyToMessageId),
       });
     }
     cursor = listed.truncated ? listed.cursor : undefined;
@@ -165,7 +165,6 @@ export async function readTelegramThreadByTarget(
   const expectedKey = telegramThreadKeyForEvent({
     chatId: target.chatId,
     replyToMessageId: target.replyToMessageId,
-    messageId: target.replyToMessageId,
   });
   const expectedId = telegramThreadIdForKey(expectedKey);
 

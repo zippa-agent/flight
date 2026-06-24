@@ -95,7 +95,7 @@ export interface DiscordReplyTarget {
   kind: "discord";
   channel: string;
   channelName?: string;
-  threadId?: string;
+  replyToMessageId?: string;
   botToken: string;
   botUserId?: string;
   guildId?: string;

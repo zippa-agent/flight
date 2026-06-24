@@ -56,10 +56,10 @@ export function contractText(policy: ToolPolicy, input: RuntimeContractInput = {
     tools.push("Domain/DNS tools: available for managed-domain listing, onboarding preparation, status, record listing, snapshots, change planning, explicit approval, apply, and export. Use search_tools with category \"domain\" for exact names. Never pick, onboard, or approve high-risk DNS changes without explicit user confirmation.");
   }
   if (available.has("list_channels")) {
-    tools.push("list_channels: available for turns with durable conversation ledgers. It lists exact email-thread:<id>, phone-..., and slack:<channel_id>:<thread_ts> targets when known, including read/unread listener status.");
+    tools.push("list_channels: available for turns with durable conversation ledgers. It lists exact email-thread:<id>, phone-..., slack:<channel_id>:<thread_ts>, discord:<channel_id>, discord:<channel_id>:<message_id>, telegram:<chat_id>, and telegram:<chat_id>:<message_id> targets when known, including read/unread listener status.");
   }
   if (available.has("read_thread")) {
-    tools.push("read_thread: available for reading a known email-thread:<id>, phone-..., slack:<channel_id>:<thread_ts>, or slack:<channel_id> target. It does not change read state unless you explicitly pass mark: \"read\" or mark: \"unread\".");
+    tools.push("read_thread: available for reading a known email-thread:<id>, phone-..., slack:<channel_id>:<thread_ts>, slack:<channel_id>, discord:<channel_id>, discord:<channel_id>:<message_id>, telegram:<chat_id>, or telegram:<chat_id>:<message_id> target. It does not change read state unless you explicitly pass mark: \"read\" or mark: \"unread\".");
   }
   if (available.has("remember_contact")) {
     tools.push("remember_contact: available for updating the local R2 contact book when the user/admin gives you an identity mapping or a trusted CRM/contact lookup confirms one. This only affects how future list_channels/read_thread output labels contacts.");
@@ -69,7 +69,7 @@ export function contractText(policy: ToolPolicy, input: RuntimeContractInput = {
   }
 
   tools.push(policy.allowSendMessage && available.has("send_message")
-    ? "send_message: available for this turn. It is the only user-visible delivery path on this messages-only surface. Email targets use email-thread:<id>; Slack thread targets use slack:<channel_id>:<thread_ts>, and top-level Slack sends use slack:<channel_id>; Discord thread targets use discord:<channel_id>:<thread_id>, and top-level Discord sends use discord:<channel_id>; Telegram reply targets use telegram:<chat_id>:<reply_to_message_id>, and top-level Telegram sends use telegram:<chat_id>."
+    ? "send_message: available for this turn. It is the only user-visible delivery path on this messages-only surface. Email targets use email-thread:<id>; Slack thread targets use slack:<channel_id>:<thread_ts>, and top-level Slack sends use slack:<channel_id>; Discord reply targets use discord:<channel_id>:<message_id>, and top-level/channel sends use discord:<channel_id>; Telegram reply targets use telegram:<chat_id>:<message_id>, and top-level Telegram sends use telegram:<chat_id>."
     : "No provider delivery tool is available for this turn.");
   tools.push(policy.allowFullBash && available.has("full_bash")
     ? "full_bash: available for this turn. It reaches the configured Crawdad-backed host container tool."

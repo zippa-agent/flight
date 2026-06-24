@@ -1,4 +1,4 @@
-export type ListenerAdapter = "email" | "phone" | "slack";
+export type ListenerAdapter = "email" | "phone" | "slack" | "discord" | "telegram";
 
 export interface ListenerThreadState {
   target: string;

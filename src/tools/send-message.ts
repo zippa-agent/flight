@@ -43,7 +43,7 @@ export function createSendMessageTool(input: {
   return defineTool({
     name: "send_message",
     description:
-      "Send the user-visible reply for the active messages-only surface. For email, provide only the human-readable email body; Flight supplies authorized recipients, thread headers, and native-style quoted history. For Slack, provide the Slack message body; Flight posts it with Slack mrkdwn formatting. For Discord, provide the message body; Flight posts it with Discord markdown formatting, splitting messages over 2000 chars. For Telegram, provide the message body; Flight posts it with Telegram HTML formatting, splitting messages over 4096 chars. Optional target accepts email-thread:<id>, slack:<channel_id>:<thread_ts>, slack:<channel_id>, discord:<channel_id>:<thread_id>, discord:<channel_id>, telegram:<chat_id>:<reply_to_message_id>, telegram:<chat_id>, or a raw Slack/Discord channel id when the active turn has that provider context.",
+      "Send the user-visible reply for the active messages-only surface. For email, provide only the human-readable email body; Flight supplies authorized recipients, thread headers, and native-style quoted history. For Slack, provide the Slack message body; Flight posts it with Slack mrkdwn formatting. For Discord, provide the message body; Flight posts it with Discord markdown formatting, splitting messages over 2000 chars. For Telegram, provide the message body; Flight posts it with Telegram HTML formatting, splitting messages over 4096 chars. Optional target accepts email-thread:<id>, slack:<channel_id>:<thread_ts>, slack:<channel_id>, discord:<channel_id>:<message_id>, discord:<channel_id>, telegram:<chat_id>:<message_id>, telegram:<chat_id>, or a raw Slack/Discord channel id when the active turn has that provider context.",
     parameters: SendMessageInput,
     execute: async ({ body, subject, target: requestedTarget }, signal) => {
       const target = await resolveReplyTarget({
@@ -138,7 +138,7 @@ export function createSendMessageTool(input: {
           at: timestamp,
           channelId: target.channel,
           channelName: target.channelName,
-          threadId: target.threadId,
+          replyToMessageId: target.replyToMessageId,
           messageId: lastMessageId,
           userId: target.botUserId || "agent",
           userName: "agent",
@@ -158,8 +158,8 @@ export function createSendMessageTool(input: {
           console.warn("Flight Discord send_message awareness append failed:", error);
         });
 
-        const destination = target.threadId
-          ? `${target.channel} thread ${target.threadId}`
+        const destination = target.replyToMessageId
+          ? `${target.channel} reply ${target.replyToMessageId}`
           : target.channel;
         return `Sent Discord message to ${destination}${lastMessageId ? ` (message id ${lastMessageId})` : ""}.`;
       }
@@ -255,7 +255,7 @@ async function resolveReplyTarget(input: {
   const parsedTelegram = parseTelegramThreadTarget(input.requestedTarget);
   if (parsedTelegram) return resolveTelegramTarget(input.turn, parsedTelegram);
 
-  throw new Error(`Unsupported send_message target "${input.requestedTarget}". Expected email-thread:<id>, slack:<channel_id>:<thread_ts>, slack:<channel_id>, discord:<channel_id>:<thread_id>, discord:<channel_id>, telegram:<chat_id>:<reply_to_message_id>, telegram:<chat_id>, or a raw Slack/Discord channel id.`);
+  throw new Error(`Unsupported send_message target "${input.requestedTarget}". Expected email-thread:<id>, slack:<channel_id>:<thread_ts>, slack:<channel_id>, discord:<channel_id>:<message_id>, discord:<channel_id>, telegram:<chat_id>:<message_id>, telegram:<chat_id>, or a raw Slack/Discord channel id.`);
 }
 
 async function resolveEmailTarget(
@@ -335,7 +335,7 @@ function resolveSlackTarget(
 
 function resolveDiscordTarget(
   turn: FlightTurnPayload,
-  parsed: { channel: string; threadId?: string; inputTarget: string },
+  parsed: { channel: string; replyToMessageId?: string; inputTarget: string },
 ): DiscordReplyTarget {
   const activeTarget = turn.event.replyTarget;
   if (activeTarget?.kind !== "discord") {
@@ -346,11 +346,11 @@ function resolveDiscordTarget(
     kind: "discord",
     channel: parsed.channel,
     channelName: activeTarget.channelName,
-    threadId: parsed.threadId,
+    replyToMessageId: parsed.replyToMessageId,
     botToken: activeTarget.botToken,
     botUserId: activeTarget.botUserId,
     guildId: activeTarget.guildId,
-    threadTarget: discordThreadTarget(parsed.channel, parsed.threadId),
+    threadTarget: discordThreadTarget(parsed.channel, parsed.replyToMessageId),
   } satisfies DiscordReplyTarget;
 }
 
@@ -455,7 +455,7 @@ async function sendDiscordMessage(
       },
       body: JSON.stringify({
         content: chunk,
-        ...(target.threadId ? { message_reference: { message_id: target.threadId, channel_id: target.channel } } : {}),
+        ...(target.replyToMessageId ? { message_reference: { message_id: target.replyToMessageId, channel_id: target.channel } } : {}),
       }),
       signal,
     });
@@ -493,7 +493,7 @@ async function sendTelegramMessage(
         chat_id: Number(chatId),
         text: chunk,
         parse_mode: "HTML",
-        ...(firstReplyId ? { reply_to_message_id: Number(firstReplyId) } : {}),
+        ...(firstReplyId ? { reply_parameters: { message_id: Number(firstReplyId) } } : {}),
       }),
       signal,
     });

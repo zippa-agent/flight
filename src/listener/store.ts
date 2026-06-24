@@ -133,11 +133,15 @@ function normalizeThreadState(value: unknown, fallbackTarget: string): ListenerT
 function inferAdapter(target: string): ListenerAdapter {
   if (target.startsWith("email-thread:")) return "email";
   if (target.startsWith("slack:")) return "slack";
+  if (target.startsWith("discord:")) return "discord";
+  if (target.startsWith("telegram:")) return "telegram";
   return "phone";
 }
 
 function normalizeAdapter(value: unknown): ListenerAdapter | undefined {
-  return value === "email" || value === "phone" || value === "slack" ? value : undefined;
+  return value === "email" || value === "phone" || value === "slack" || value === "discord" || value === "telegram"
+    ? value
+    : undefined;
 }
 
 function stringValue(value: unknown): string | undefined {

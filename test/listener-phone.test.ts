@@ -118,3 +118,31 @@ test("phone listener ledger stores targets and read_thread can explicitly mark r
   assert.equal(states[target].read, true);
   assert.equal(states[target].readBy, "agent");
 });
+
+test("listener state preserves Discord and Telegram adapter types", async () => {
+  const bucket = new FakeR2Bucket();
+  const env = { FLIGHT_WORKSPACE: bucket.r2 } as unknown as Env;
+
+  await noteListenerInboundThread({
+    env,
+    agentId,
+    target: "discord:123456789012345678",
+    adapter: "discord",
+    at: "2026-06-21T10:00:00.000Z",
+    eventId: "discord-evt",
+    lastPreview: "Discord note.",
+  });
+  await noteListenerInboundThread({
+    env,
+    agentId,
+    target: "telegram:8389147137",
+    adapter: "telegram",
+    at: "2026-06-21T10:01:00.000Z",
+    eventId: "telegram-evt",
+    lastPreview: "Telegram note.",
+  });
+
+  const states = await readListenerThreadStates(env, agentId);
+  assert.equal(states["discord:123456789012345678"].adapter, "discord");
+  assert.equal(states["telegram:8389147137"].adapter, "telegram");
+});

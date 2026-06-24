@@ -7,6 +7,7 @@ export interface DiscordThreadLedgerEvent {
   channelId: string;
   channelName?: string;
   threadId?: string;
+  replyToMessageId?: string;
   messageId?: string;
   userId?: string;
   userName?: string;
@@ -38,7 +39,7 @@ export interface DiscordThreadListing {
 
 export interface DiscordThreadTarget {
   channel: string;
-  threadId?: string;
+  replyToMessageId?: string;
   inputTarget: string;
 }
 
@@ -55,7 +56,7 @@ export function parseDiscordThreadTarget(target: string | undefined | null): Dis
   if (threadMatch) {
     return {
       channel: threadMatch[1],
-      threadId: threadMatch[2],
+      replyToMessageId: threadMatch[2],
       inputTarget: `discord:${threadMatch[1]}:${threadMatch[2]}`,
     };
   }
@@ -78,16 +79,16 @@ export function parseDiscordThreadTarget(target: string | undefined | null): Dis
   return null;
 }
 
-export function discordThreadTarget(channel: string, threadId?: string): string {
+export function discordThreadTarget(channel: string, replyToMessageId?: string): string {
   const normalizedChannel = channel.trim();
-  return threadId ? `discord:${normalizedChannel}:${threadId}` : `discord:${normalizedChannel}`;
+  return replyToMessageId ? `discord:${normalizedChannel}:${replyToMessageId}` : `discord:${normalizedChannel}`;
 }
 
 export function discordThreadKeyForEvent(
-  event: Pick<DiscordThreadLedgerEvent, "channelId" | "threadId" | "messageId">,
+  event: Pick<DiscordThreadLedgerEvent, "channelId" | "threadId" | "replyToMessageId">,
 ): string {
   const channelId = event.channelId.trim();
-  const rootId = event.threadId || event.messageId || "top";
+  const rootId = event.replyToMessageId || event.threadId || "top";
   return `discord:${channelId}:${rootId}`;
 }
 
@@ -96,7 +97,7 @@ export function discordThreadIdForKey(threadKey: string): string {
 }
 
 export function discordThreadIdForEvent(
-  event: Pick<DiscordThreadLedgerEvent, "channelId" | "threadId" | "messageId">,
+  event: Pick<DiscordThreadLedgerEvent, "channelId" | "threadId" | "replyToMessageId">,
 ): string {
   return discordThreadIdForKey(discordThreadKeyForEvent(event));
 }
@@ -144,7 +145,7 @@ export async function readDiscordThreadLedger(env: Env, agentId: string): Promis
         ...event,
         threadKey,
         threadIdHash,
-        sendTarget: discordThreadTarget(event.channelId, event.threadId || event.messageId),
+        sendTarget: discordThreadTarget(event.channelId, event.replyToMessageId || event.threadId),
       });
     }
     cursor = listed.truncated ? listed.cursor : undefined;
@@ -162,8 +163,7 @@ export async function readDiscordThreadByTarget(
   const boundedLimit = Math.max(1, Math.min(Math.floor(limit) || 80, 200));
   const expectedKey = discordThreadKeyForEvent({
     channelId: target.channel,
-    threadId: target.threadId,
-    messageId: target.threadId,
+    replyToMessageId: target.replyToMessageId,
   });
   const expectedId = discordThreadIdForKey(expectedKey);
 
@@ -171,8 +171,10 @@ export async function readDiscordThreadByTarget(
     .filter((record) => {
       if (record.threadIdHash === expectedId) return true;
       if (record.channelId !== target.channel) return false;
-      if (!target.threadId) return !record.threadId;
-      return record.threadId === target.threadId || record.messageId === target.threadId;
+      if (!target.replyToMessageId) return !record.replyToMessageId && !record.threadId;
+      return record.replyToMessageId === target.replyToMessageId
+        || record.threadId === target.replyToMessageId
+        || record.messageId === target.replyToMessageId;
     })
     .slice(-boundedLimit);
 }
@@ -246,6 +248,7 @@ function normalizeLedgerEvent(value: unknown): DiscordThreadLedgerEvent | null {
     channelId,
     channelName: stringValue(raw.channelName),
     threadId: discordIdValue(raw.threadId),
+    replyToMessageId: discordIdValue(raw.replyToMessageId),
     messageId: discordIdValue(raw.messageId),
     userId: stringValue(raw.userId),
     userName: stringValue(raw.userName),
