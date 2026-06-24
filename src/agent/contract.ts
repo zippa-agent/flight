@@ -14,7 +14,7 @@ export function toolPolicyForTurn(turn: FlightTurnPayload | null): ToolPolicy {
   return {
     allowSendMessage: turn?.event.deliveryMode === "messages-only" && !!turn.event.replyTarget,
     allowFullBash: Boolean(turn?.toolPolicy.allowFullBash),
-    allowYieldNoAction: Boolean(turn?.toolPolicy.allowYieldNoAction),
+    allowYieldNoAction: Boolean(turn),
   };
 }
 
@@ -64,8 +64,8 @@ export function contractText(policy: ToolPolicy, input: RuntimeContractInput = {
   if (available.has("remember_contact")) {
     tools.push("remember_contact: available for updating the local R2 contact book when the user/admin gives you an identity mapping or a trusted CRM/contact lookup confirms one. This only affects how future list_channels/read_thread output labels contacts.");
   }
-  if (policy.allowYieldNoAction && available.has("yield_no_action")) {
-    tools.push("yield_no_action: available for ambient or passive turns only. Use it when you were not directly addressed and have nothing useful to add; it records a quiet no-op without sending a user-visible message.");
+  if (available.has("yield_no_action")) {
+    tools.push("yield_no_action: available for any turn where no user-visible response is appropriate. Use it only when you were not directly addressed or the turn is intentionally passive and you have nothing useful to add.");
   }
 
   tools.push(policy.allowSendMessage && available.has("send_message")

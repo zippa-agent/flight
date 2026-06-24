@@ -48,7 +48,7 @@ test("messages-only email turns expose send_message", () => {
     toolPolicy: { allowSendMessage: true, allowFullBash: false },
   };
 
-  assert.deepEqual(availableToolNames({ env, turn }), ["search_tools", "send_message"]);
+  assert.deepEqual(availableToolNames({ env, turn }), ["search_tools", "send_message", "yield_no_action"]);
   assert.deepEqual(availableToolNames({ env: workspaceEnv, turn }), [
     "search_tools",
     "set_site_binding",
@@ -58,6 +58,7 @@ test("messages-only email turns expose send_message", () => {
     "read_thread",
     "remember_contact",
     "send_message",
+    "yield_no_action",
   ]);
 });
 
@@ -79,9 +80,9 @@ test("full_bash requires both policy and Crawdad credentials", () => {
     toolPolicy: { allowSendMessage: true, allowFullBash: true },
   } satisfies FlightTurnPayload;
 
-  assert.deepEqual(availableToolNames({ env, turn }), ["search_tools", "send_message"]);
+  assert.deepEqual(availableToolNames({ env, turn }), ["search_tools", "send_message", "yield_no_action"]);
   assert.deepEqual(availableToolNames({
     env: { CRAWDAD_API_BASE: "https://crawdad.tinyfat.com", CRAWDAD_API_TOKEN: "token" },
     turn,
-  }), ["search_tools", "browser_content", "browser_evaluate", "send_message", "full_bash"]);
+  }), ["search_tools", "browser_content", "browser_evaluate", "send_message", "yield_no_action", "full_bash"]);
 });

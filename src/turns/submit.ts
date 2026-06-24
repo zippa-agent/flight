@@ -224,7 +224,7 @@ function buildTurnPayload(
   const toolPolicy = {
     allowSendMessage: event.deliveryMode === "messages-only" && !!event.replyTarget,
     allowFullBash: Boolean(options.allowFullBash),
-    allowYieldNoAction: event.context?.slackDirectlyAddressed === false,
+    allowYieldNoAction: true,
   };
   const prompt = buildTurnPrompt({ event, awarenessTail });
   return {

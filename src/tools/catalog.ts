@@ -238,10 +238,10 @@ export function buildToolCatalog(input: ToolCatalogInput): ToolCatalogEntry[] {
       description:
         "Record an intentional quiet no-op for ambient/passive turns where the agent has nothing useful to add.",
       promptDetail:
-        "yield_no_action: available only for ambient/passive turns; use it instead of sending a message when not directly addressed and there is nothing useful to add.",
+        "yield_no_action: use it instead of sending a message when no user-visible response is appropriate, such as ambient/passive turns where the agent was not directly addressed and has nothing useful to add.",
       keywords: ["ambient", "passive", "no action", "quiet"],
       risk: "read",
-      available: !!(input.turn && policy.allowYieldNoAction),
+      available: !!input.turn,
       create: () => createYieldNoActionTool(),
     },
     {
