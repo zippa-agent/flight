@@ -37,11 +37,13 @@ test("registry resolves catalog-backed browser and domain tools", () => {
   };
 
   assert.deepEqual(availableToolNames({ env, turn: null }).sort(), [
+    "abandon_goal",
     "browser_content",
     "browser_evaluate",
     "browser_pdf",
     "browser_screenshot",
     "browser_session",
+    "complete_goal",
     "deploy_site",
     "dns_change_apply",
     "dns_change_approve",
@@ -56,6 +58,7 @@ test("registry resolves catalog-backed browser and domain tools", () => {
     "domain_onboard_prepare",
     "domain_onboard_status",
     "search_tools",
+    "set_goal",
     "set_site_binding",
     "upload_site_content",
   ].sort());

@@ -22,7 +22,7 @@ export function createSetGoalTool(input: { env: Env; instanceId: string }) {
         status: "active" as const,
       };
       await writeGoalState(input.env.FLIGHT_WORKSPACE, agentId, state);
-      return { ok: true, goal: state.goal, setAt: state.setAt, status: state.status };
+      return `Set active goal: ${state.goal}`;
     },
   });
 }

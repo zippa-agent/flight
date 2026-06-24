@@ -27,9 +27,7 @@ export function buildAgentInstructions(input: {
     parts.push(activeAdapterInstructions(input.turn.event));
   }
 
-  return parts.filter(Boolean).join("
-
-");
+  return parts.filter(Boolean).join("\n\n");
 }
 
 export function buildTurnPrompt(input: {
@@ -64,8 +62,7 @@ export function buildTurnPrompt(input: {
     "",
     "Current inbound message:",
     input.event.message.modelText || input.event.message.text,
-  ].filter((line) => line !== "").join("
-");
+  ].filter((line) => line !== "").join("\n");
 }
 
 function activeAdapterInstructions(event: InboundEvent): string {
@@ -75,8 +72,7 @@ function activeAdapterInstructions(event: InboundEvent): string {
     `- Delivery mode: ${event.deliveryMode}`,
     ...(event.scope.instructions || []).map((line) => `- Scope: ${line}`),
     ...event.formatInstructions.map((line) => `- ${line}`),
-  ].join("
-");
+  ].join("\n");
 }
 
 function renderAwarenessTail(entries: AwarenessEntry[]): string {
@@ -88,18 +84,15 @@ function renderAwarenessTail(entries: AwarenessEntry[]): string {
       if (block.type === "toolCall") return `[tool_call ${block.name}] ${clipText(JSON.stringify(block.arguments), MAX_AWARENESS_BLOCK_CHARS)}`;
       if (block.type === "toolResult") return `[tool_result ${block.toolCallId}] ${clipText(block.result, MAX_AWARENESS_BLOCK_CHARS)}`;
       return "";
-    }).filter(Boolean).join("
-");
+    }).filter(Boolean).join("\n");
     const role = entry.role || entry.type;
     const channel = entry.channel || entry.adapter;
     return `[${entry.timestamp}] [${channel}] [${role}] ${text}`;
-  }).join("
-");
+  }).join("\n");
   return clipText(rendered, MAX_AWARENESS_TAIL_CHARS);
 }
 
 function clipText(value: string, maxChars: number): string {
   if (value.length <= maxChars) return value;
-  return `${value.slice(0, maxChars)}
-[truncated ${value.length - maxChars} chars]`;
+  return `${value.slice(0, maxChars)}\n[truncated ${value.length - maxChars} chars]`;
 }

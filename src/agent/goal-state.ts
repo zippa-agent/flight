@@ -40,17 +40,14 @@ export async function writeGoalState(
 
 export function renderGoalContext(state: GoalState | null): string {
   if (!state) return "";
-  const label =
-    state.status === "active" ? "ACTIVE" :
-    state.status === "completed" ? "COMPLETED" : "ABANDONED";
+  if (state.status !== "active") return "";
   const lines = [
-    `Current goal [${label}]: ${state.goal}`,
+    `Current goal [ACTIVE]: ${state.goal}`,
     `Set at: ${state.setAt}`,
   ];
   if (state.completedAt) lines.push(`Closed at: ${state.completedAt}`);
   if (state.reason) lines.push(`Reason: ${state.reason}`);
-  return lines.join("
-");
+  return lines.join("\n");
 }
 
 function parseGoalState(raw: unknown): GoalState | null {

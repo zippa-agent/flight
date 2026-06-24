@@ -16,8 +16,8 @@ export function createAbandonGoalTool(input: { env: Env; instanceId: string }) {
       if (!input.env.FLIGHT_WORKSPACE) throw new Error("FLIGHT_WORKSPACE not available.");
       const agentId = workspaceOwnerIdFromInstanceId(input.instanceId);
       const current = await readGoalState(input.env.FLIGHT_WORKSPACE, agentId);
-      if (!current) return { ok: false, message: "No active goal found." };
-      if (current.status !== "active") return { ok: false, message: `Goal is already ${current.status}.` };
+      if (!current) return "No active goal found.";
+      if (current.status !== "active") return `Goal is already ${current.status}.`;
       const completedAt = new Date().toISOString();
       await writeGoalState(input.env.FLIGHT_WORKSPACE, agentId, {
         ...current,
@@ -25,7 +25,7 @@ export function createAbandonGoalTool(input: { env: Env; instanceId: string }) {
         completedAt,
         ...(reason ? { reason } : {}),
       });
-      return { ok: true, goal: current.goal, completedAt, reason: reason ?? null };
+      return `Abandoned goal: ${current.goal}${reason ? ` (${reason})` : ""}`;
     },
   });
 }

@@ -91,6 +91,5 @@ export function contractText(policy: ToolPolicy, input: RuntimeContractInput = {
     "",
     "Available capability details:",
     ...tools.map((tool) => `- ${tool}`),
-  ].join("
-");
+  ].join("\n");
 }

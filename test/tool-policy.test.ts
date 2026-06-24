@@ -18,6 +18,9 @@ test("site tools are available when Flight workspace storage is configured", () 
     "set_site_binding",
     "deploy_site",
     "upload_site_content",
+    "set_goal",
+    "complete_goal",
+    "abandon_goal",
   ]);
 });
 
@@ -58,6 +61,9 @@ test("messages-only email turns expose send_message", () => {
     "read_thread",
     "remember_contact",
     "send_message",
+    "set_goal",
+    "complete_goal",
+    "abandon_goal",
   ]);
 });
 

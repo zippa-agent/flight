@@ -83,7 +83,7 @@ test("renderGoalContext renders an active goal", () => {
   assert.match(result, /2026-06-23T21:00:00.000Z/);
 });
 
-test("renderGoalContext renders a completed goal with closedAt", () => {
+test("renderGoalContext returns empty string for completed goals", () => {
   const state: GoalState = {
     goal: "Review Flight PR #1",
     setAt: "2026-06-23T20:00:00.000Z",
@@ -91,11 +91,10 @@ test("renderGoalContext renders a completed goal with closedAt", () => {
     completedAt: "2026-06-23T21:30:00.000Z",
   };
   const result = renderGoalContext(state);
-  assert.match(result, /COMPLETED/);
-  assert.match(result, /2026-06-23T21:30:00.000Z/);
+  assert.equal(result, "");
 });
 
-test("renderGoalContext renders an abandoned goal with reason", () => {
+test("renderGoalContext returns empty string for abandoned goals", () => {
   const state: GoalState = {
     goal: "Draft scheduling DO",
     setAt: "2026-06-23T19:00:00.000Z",
@@ -104,6 +103,5 @@ test("renderGoalContext renders an abandoned goal with reason", () => {
     reason: "Blocked on issue #5",
   };
   const result = renderGoalContext(state);
-  assert.match(result, /ABANDONED/);
-  assert.match(result, /Blocked on issue #5/);
+  assert.equal(result, "");
 });

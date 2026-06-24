@@ -395,8 +395,7 @@ function scoreEntry(entry: ToolCatalogEntry, query: string): number {
     entry.description,
     entry.promptDetail || "",
     ...(entry.keywords || []),
-  ].join("
-").toLowerCase();
+  ].join("\n").toLowerCase();
   const terms = q.split(/\s+/u).filter(Boolean);
   let score = 0;
   if (name === q) score += 100;

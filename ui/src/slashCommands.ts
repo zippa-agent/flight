@@ -47,7 +47,7 @@ export const SLASH_COMMANDS: SlashCommandDefinition[] = [
   {
     command: '/goal',
     label: 'Goal',
-    description: 'Set or view the active session goal.',
+    description: 'Set the active session goal.',
     insertText: '/goal ',
   },
   {
